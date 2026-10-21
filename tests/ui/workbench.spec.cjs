@@ -1,3 +1,4 @@
+const { electronEnvironment } = require('./electron-env.cjs');
 'use strict';
 const { test, expect, _electron: electron, chromium } = require('@playwright/test');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
@@ -5,7 +6,7 @@ const root = path.resolve(__dirname, '../..'), evidence = path.join(root, 'test-
 let app, admin, browser, base, dataRoot;
 test.describe.configure({ mode: 'serial' });
 async function launch() {
-  app = await electron.launch({ args: [root, '--dev-preview', '--autostart', '--port=0', `--data-dir=${dataRoot}`], env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+  app = await electron.launch({ args: [root, '--dev-preview', '--autostart', '--port=0', `--data-dir=${dataRoot}`], env: electronEnvironment() });
   admin = await app.firstWindow(); await admin.waitForURL('**/admin'); base = new URL(admin.url()).origin;
   await expect(admin.locator('#admin')).toBeVisible();
 }

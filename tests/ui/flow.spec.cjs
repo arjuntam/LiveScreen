@@ -1,3 +1,4 @@
+const { electronEnvironment } = require('./electron-env.cjs');
 'use strict';
 const { test, expect, _electron: electron, chromium } = require('@playwright/test');
 const fs = require('node:fs');
@@ -11,7 +12,7 @@ const evidence = path.join(projectRoot, 'test-results/evidence');
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {
   fs.mkdirSync(evidence, { recursive: true }); dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'livescreen-ui-'));
-  app = await electron.launch({ args: [projectRoot, '--smoke-test', '--port=0', `--data-dir=${dataRoot}`], timeout: 45000, env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+  app = await electron.launch({ args: [projectRoot, '--smoke-test', '--port=0', `--data-dir=${dataRoot}`], timeout: 45000, env: electronEnvironment() });
   admin = await app.firstWindow(); await admin.waitForURL('**/admin'); base = new URL(admin.url()).origin;
   await expect(admin.locator('#admin')).toBeVisible();
   await expect.poll(async () => (await admin.evaluate(async () => (await (await fetch('/api/state')).json()).current))?.isGuide).toBe(true);
@@ -231,7 +232,7 @@ test('explicit native quit closes LED and local HTTP service without restart', a
   app = null;
 });
 test('native restart waits on the guide until the trusted phone reconnects, then plays the default background', async () => {
-  app = await electron.launch({ args: [projectRoot, '--smoke-test', '--port=0', `--data-dir=${dataRoot}`], timeout: 45000, env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+  app = await electron.launch({ args: [projectRoot, '--smoke-test', '--port=0', `--data-dir=${dataRoot}`], timeout: 45000, env: electronEnvironment() });
   admin = await app.firstWindow(); await admin.waitForURL('**/admin');
   base = new URL(admin.url()).origin;
   await expect.poll(async () => (await admin.evaluate(async () => (await (await fetch('/api/state')).json()).current))?.isGuide).toBe(true);

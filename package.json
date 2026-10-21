@@ -13,12 +13,12 @@
     "test:ui": "playwright test",
     "check": "node scripts/check.cjs",
     "build": "npm run check && electron-builder --dir",
-    "build:win": "npm run check && electron-builder --win nsis --x64 && node scripts/verify-windows.cjs",
+    "build:win": "npm run check && electron-builder --win nsis --x64 --publish never && node scripts/verify-windows.cjs",
     "build:win:dir": "npm run check && electron-builder --win --x64 --dir",
     "postinstall": "node node_modules/electron/install.js",
     "build:mac:preview": "npm run check && electron-builder --config build/mac-preview.cjs --mac dir --arm64",
     "preview": "electron . --dev-preview --data-dir=.local/mac-preview-data --port=0",
-    "build:mac": "npm run check && electron-builder --config build/mac.cjs --mac --arm64 && node scripts/package-mac-dmg.cjs"
+    "build:mac": "npm run check && electron-builder --config build/mac.cjs --mac --arm64 --publish never && node scripts/package-mac-dmg.cjs"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

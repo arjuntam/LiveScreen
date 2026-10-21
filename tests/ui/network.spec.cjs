@@ -1,3 +1,4 @@
+const { electronEnvironment } = require('./electron-env.cjs');
 'use strict';
 const { test, expect, _electron: electron, chromium } = require('@playwright/test');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
@@ -8,7 +9,7 @@ test('network reconnect updates desktop and guide QR automatically; actual LAN U
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'livescreen-lan-ui-'));
   let app, browser;
   try {
-    app = await electron.launch({ args: [root, '--dev-preview', '--port=0', `--data-dir=${dataRoot}`], env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+    app = await electron.launch({ args: [root, '--dev-preview', '--port=0', `--data-dir=${dataRoot}`], env: electronEnvironment() });
     const admin = await app.firstWindow(); await admin.waitForURL('**/admin');
     await expect(admin.locator('#admin')).toBeVisible(); await admin.locator('#tabSystem').click();
     const info = await admin.evaluate(async () => (await (await fetch('/api/admin/system')).json()));

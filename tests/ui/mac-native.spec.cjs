@@ -1,3 +1,4 @@
+const { electronEnvironment } = require('./electron-env.cjs');
 'use strict';
 const { test, expect, _electron: electron } = require('@playwright/test');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
@@ -6,7 +7,7 @@ test('Mac native management starts without taking over a screen; close, reopen a
   const root = path.resolve(__dirname, '../..'), data = fs.mkdtempSync(path.join(os.tmpdir(), 'livescreen-mac-native-'));
   let app;
   try {
-    app = await electron.launch({ args: [root, '--port=0', `--data-dir=${data}`], env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+    app = await electron.launch({ args: [root, '--port=0', `--data-dir=${data}`], env: electronEnvironment() });
     const admin = await app.firstWindow(); await admin.waitForURL('**/admin'); await expect(admin.locator('#admin')).toBeVisible();
     expect(app.windows().filter(w => w.url().includes('/src/player/index.html'))).toHaveLength(0);
     await expect(admin.locator('#previewTools')).toBeHidden(); await admin.locator('#tabSystem').click();

@@ -1,3 +1,4 @@
+const { electronEnvironment } = require('./electron-env.cjs');
 'use strict';
 const { test, expect, _electron: electron } = require('@playwright/test');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
@@ -6,7 +7,7 @@ test('generic guide prefers Wi-Fi over simultaneous Ethernet, updates same-IP SS
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'livescreen-generic-guide-'));
   let app;
   try {
-    app = await electron.launch({ args: [root, '--smoke-test', '--port=0', `--data-dir=${dataRoot}`], env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+    app = await electron.launch({ args: [root, '--smoke-test', '--port=0', `--data-dir=${dataRoot}`], env: electronEnvironment() });
     const admin = await app.firstWindow(); await admin.waitForURL('**/admin'); await expect(admin.locator('#admin')).toBeVisible();
     await expect.poll(() => app.windows().some(w => w.url().includes('/src/player/index.html'))).toBe(true);
     const led = app.windows().find(w => w.url().includes('/src/player/index.html')); await expect(led.locator('.pairing-guide')).toBeVisible();
