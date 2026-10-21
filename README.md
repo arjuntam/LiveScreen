@@ -12,10 +12,10 @@
 
 | 系统 | 当前下载 | 适用设备 |
 | --- | --- | --- |
-| Windows | [Windows 0.3.5 安装包](https://github.com/arjuntam/LiveScreen/releases/download/v0.4.0/LiveScreen-Setup-0.3.5-x64.exe) | Windows 10 / 11，x64 |
+| Windows | [Windows 0.4.0 安装包](https://github.com/arjuntam/LiveScreen/releases/download/v0.4.0/LiveScreen-Setup-0.4.0-x64.exe) | Windows 10 / 11，x64 |
 | macOS | [Mac 0.4.0 安装磁盘](https://github.com/arjuntam/LiveScreen/releases/download/v0.4.0/LiveScreen-Mac-0.4.0-arm64.dmg) | Apple 芯片，macOS 13+ |
 
-发布页同时提供两个系统已测试的安装包，版本号分别标明。仓库当前源码为 0.4.0，Windows 安装包保留此前测试过的 0.3.5。Intel Mac 安装包暂未提供。
+发布页提供 Windows 与 Apple 芯片 Mac 的 0.4.0 安装包，由 GitHub Actions 从 v0.4.0 公开源码构建，执行测试与安装包完整性检查后发布。Intel Mac 安装包暂未提供。
 
 安装包尚未取得 Windows 商业签名 / Apple Developer ID 公证；Mac 包有本地 ad-hoc 完整性签名。系统若阻止安装，请记录准确提示，不要关闭系统安全保护。下载后可对照发布页的 SHA256SUMS.txt 校验。
 

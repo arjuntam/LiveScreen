@@ -1,0 +1,74 @@
+name: Publish desktop installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-v0.4.0
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v0.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:ui
+      - run: npm run build:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/LiveScreen-Setup-0.4.0-x64.exe
+          if-no-files-found: error
+  mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v0.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build:mac
+      - run: node scripts/verify-mac.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mac
+          path: dist/mac/LiveScreen-Mac-0.4.0-arm64.dmg
+          if-no-files-found: error
+  publish:
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: v0.4.0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Calculate checksums and publish
+        working-directory: release-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha256sum LiveScreen-Setup-0.4.0-x64.exe LiveScreen-Mac-0.4.0-arm64.dmg > SHA256SUMS.txt
+          cp ../LICENSE LICENSE.txt
+          gh release upload v0.4.0 ./*.exe ./*.dmg SHA256SUMS.txt LICENSE.txt --clobber
