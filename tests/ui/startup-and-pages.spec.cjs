@@ -158,14 +158,18 @@ test('local scene also cancels a phone page before its renderer acknowledgement'
   const led = app.windows().find(w => w.url().includes('/src/player/index.html'));
   await led.evaluate(() => {
     window.originalRAF = window.requestAnimationFrame.bind(window);
-    window.requestAnimationFrame = callback => window.originalRAF(time => setTimeout(() => callback(time), 250));
+    window.heldPageFrames = []; let holdNext = true;
+    window.requestAnimationFrame = callback => {
+      if (holdNext) { holdNext = false; window.heldPageFrames.push(callback); return 0; }
+      return window.originalRAF(callback);
+    };
   });
   await a.page.evaluate(playbackId => {
     window.pageConflict = fetch('/api/state').then(r => r.json()).then(state => fetch('/api/page', { method: 'POST', headers: { 'X-LiveScreen': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ playbackId, direction: 'next', controlGeneration: state.control.generation }) })).then(r => r.status);
   }, id);
   await expect.poll(async () => (await api('/api/state', undefined, 'GET')).data.control.busySource).toBe('remote');
   await local('开播背景'); expect(await a.page.evaluate(() => window.pageConflict)).toBe(409);
-  await led.evaluate(() => { window.requestAnimationFrame = window.originalRAF; });
+  await led.evaluate(() => { window.requestAnimationFrame = window.originalRAF; window.heldPageFrames.forEach(callback => window.originalRAF(callback)); });
   const current = (await api('/api/state', undefined, 'GET')).data.current;
   expect(current.sceneId).toBe('welcome'); expect(current.pageIndex).toBe(0);
   await expect(led.locator('.scene.live img:not(.off)')).toHaveAttribute('src', /welcome.png/);

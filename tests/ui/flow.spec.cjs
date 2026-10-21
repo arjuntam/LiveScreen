@@ -87,8 +87,18 @@ test('video is muted/looped, restarts on entry; slideshow advances; corrupt medi
   const led = app.windows().find(w => w.url().includes('/src/player/index.html'));
   const switchTo = id => admin.evaluate(async id => { const r = await fetch('/api/switch', { method: 'POST', headers: { 'X-LiveScreen': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: 'home', sceneId: id }) }); return { status: r.status, body: await r.json() }; }, id);
   expect((await switchTo('loop')).status).toBe(200); await expect(led.locator('.scene.live video')).toHaveJSProperty('muted', true); await expect(led.locator('.scene.live video')).toHaveJSProperty('loop', true);
-  await led.waitForTimeout(700); await switchTo('welcome'); await switchTo('loop');
-  expect(await led.locator('.scene.live video').evaluate(v => v.currentTime)).toBeLessThan(.6);
+  await led.waitForTimeout(700);
+  await led.evaluate(() => {
+    window.previousVideo = document.querySelector('.scene.live video');
+    window.originalMediaPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function(...args) { window.reentryStartTime = this.currentTime; return window.originalMediaPlay.apply(this, args); };
+  });
+  await switchTo('welcome'); await switchTo('loop');
+  const restarted = await led.evaluate(() => {
+    HTMLMediaElement.prototype.play = window.originalMediaPlay;
+    return { start: window.reentryStartTime, fresh: document.querySelector('.scene.live video') !== window.previousVideo };
+  });
+  expect(restarted.start).toBeLessThan(.01); expect(restarted.fresh).toBe(true);
   await switchTo('slides'); const first = await led.locator('.scene.live img:not(.off)').getAttribute('src');
   await expect.poll(async () => led.locator('.scene.live img:not(.off)').getAttribute('src'), { timeout: 12000 }).not.toBe(first);
   await led.screenshot({ path: path.join(evidence, 'native-player.png') });

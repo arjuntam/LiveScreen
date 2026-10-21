@@ -48,7 +48,20 @@ test('generic guide prefers Wi-Fi over simultaneous Ethernet, updates same-IP SS
     await expect(led.locator('.guide-network-label').first()).toHaveText('Wi-Fi · 名称暂不可读');
     await app.evaluate(() => { globalThis.guideTestMode = 'wired'; });
     await expect(led.locator('[data-guide-network-name]')).toHaveText('以太网');
+    let releaseSystemRead, capturedSystemRead = false;
+    const systemReadGate = new Promise(resolve => { releaseSystemRead = resolve; });
+    await admin.route('**/api/admin/system', async route => {
+      const response = await route.fetch();
+      if (!capturedSystemRead) { capturedSystemRead = true; await systemReadGate; }
+      await route.fulfill({ response });
+    });
     await admin.locator('#tabSystem').click();
+    await expect.poll(() => capturedSystemRead).toBe(true);
+    await admin.getByLabel('手机连接网络名称', { exact:true }).fill('演示厅 Wi-Fi');
+    releaseSystemRead();
+    await expect(admin.locator('#startupSettings button')).toBeEnabled();
+    await expect(admin.getByLabel('手机连接网络名称', { exact:true })).toHaveValue('演示厅 Wi-Fi');
+    await admin.unroute('**/api/admin/system');
     await expect(admin.locator('.guide-reference-full')).toHaveCount(0);
     await expect(admin.locator('#systemPanel')).not.toContainText('企业微信');
     await admin.getByLabel('手机连接网络名称', { exact:true }).fill('演示厅 Wi-Fi');

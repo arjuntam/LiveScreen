@@ -7,6 +7,7 @@ let pairing, pairingBusy = false;
 let editVersion = 0, saveError = '';
 let liveState, localProjectId, localRequesting = false, desktopOnline = true, systemLoading;
 let pairingWait = Promise.resolve();
+let networkNameDirty = false, networkNameVersion = 0;
 LS.passwordToggles();
 const project = () => library?.draft.find(p => p.id === projectId);
 const scene = () => project()?.scenes.find(s => s.id === sceneId);
@@ -167,6 +168,7 @@ async function loadSystem() {
   return systemLoading;
 }
 async function readSystem() {
+  const networkVersion = networkNameVersion;
   system = await api('/api/admin/system');
   $('#platformNote').textContent = system.preview ? '当前是窗口式预览，不占用真实外接屏。' : system.platform === 'darwin' ? '请在 macOS「系统设置 → 显示器」中设为扩展显示器，关闭镜像。绑定后仅向所选屏幕输出。' : '请在 Windows 显示设置中使用“扩展这些显示器”。';
   $('#displaySelect').replaceChildren(...system.displays.map(d => {
@@ -183,7 +185,7 @@ async function readSystem() {
   $('#previewTools').hidden = !system.preview || !window.livescreenDesktop;
   $('#toggleOutput').textContent = system.settings.outputPaused ? '恢复大屏输出' : '暂停大屏输出';
   renderConnections(system);
-  $('#phoneNetworkName').value = system.phoneNetworkName || '';
+  if (!networkNameDirty && networkVersion === networkNameVersion) $('#phoneNetworkName').value = system.phoneNetworkName || '';
   $('#transitionEnabled').checked = system.settings.transition.enabled;
   $('#transitionDuration').value = String(system.settings.transition.durationMs);
   $('#transitionDuration').disabled = !$('#transitionEnabled').checked;
@@ -271,11 +273,14 @@ async function turnLocalPage(playbackId, direction) {
   finally { localRequesting = false; renderLocalPlayback(); }
 }
 $('#refreshSystem').onclick = () => action(async () => { await api('/api/admin/network/refresh', { method: 'POST' }); await loadSystem(); message('网络与设备已刷新，请使用当前二维码。'); });
+$('#phoneNetworkName').oninput = () => { networkNameDirty = true; networkNameVersion++; };
 $('#networkHintForm').onsubmit = async e => {
   e.preventDefault(); const button = e.target.querySelector('button'); button.disabled = true;
   try {
-    await api('/api/admin/network/hint', { method: 'POST', body: { name: $('#phoneNetworkName').value } });
-    LS.feedback('#networkHintFeedback', '已保存；未识别到 Wi-Fi 名称时使用');
+    const version = networkNameVersion, name = $('#phoneNetworkName').value;
+    await api('/api/admin/network/hint', { method: 'POST', body: { name } });
+    if (version === networkNameVersion) networkNameDirty = false;
+    LS.feedback('#networkHintFeedback', version === networkNameVersion ? '已保存；未识别到 Wi-Fi 名称时使用' : '先前内容已保存；当前修改尚未保存');
     renderConnections(await api('/api/admin/system'));
   } catch (error) { LS.feedback('#networkHintFeedback', error.message, true); }
   finally { button.disabled = false; }
