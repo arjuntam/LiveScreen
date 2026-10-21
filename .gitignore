@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.local/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+devices.json
+首次安装口令.txt
+# Local project materials must never be published.
+docs/private/
+docs/source/

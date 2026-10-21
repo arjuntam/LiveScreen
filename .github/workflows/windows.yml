@@ -1,0 +1,22 @@
+name: Windows build and smoke tests
+on: [workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:ui
+      - run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiveScreen-Windows-x64
+          path: |
+            dist/LiveScreen-Setup-*.exe
+            test-results/evidence/*.png

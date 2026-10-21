@@ -1,0 +1,212 @@
+{
+  "schema": 1,
+  "revision": 1,
+  "draftRevision": 1,
+  "published": [
+    {
+      "id": "home",
+      "name": "家用中央空调 · 示例",
+      "defaultSceneId": "welcome",
+      "scenes": [
+        {
+          "id": "welcome",
+          "name": "开播背景",
+          "type": "image",
+          "assetIds": [
+            "welcome"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "product",
+          "name": "产品介绍",
+          "type": "image",
+          "assetIds": [
+            "product"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "loop",
+          "name": "静音视频演示",
+          "type": "video",
+          "assetIds": [
+            "motion"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "slides",
+          "name": "图片轮播演示",
+          "type": "slideshow",
+          "assetIds": [
+            "welcome",
+            "product"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "topic",
+      "name": "产品专题 · 示例",
+      "defaultSceneId": "topic-default",
+      "scenes": [
+        {
+          "id": "topic-default",
+          "name": "专题背景",
+          "type": "image",
+          "assetIds": [
+            "product"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    }
+  ],
+  "draft": [
+    {
+      "id": "home",
+      "name": "家用中央空调 · 示例",
+      "defaultSceneId": "welcome",
+      "scenes": [
+        {
+          "id": "welcome",
+          "name": "开播背景",
+          "type": "image",
+          "assetIds": [
+            "welcome"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "product",
+          "name": "产品介绍",
+          "type": "image",
+          "assetIds": [
+            "product"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "loop",
+          "name": "静音视频演示",
+          "type": "video",
+          "assetIds": [
+            "motion"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "slides",
+          "name": "图片轮播演示",
+          "type": "slideshow",
+          "assetIds": [
+            "welcome",
+            "product"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "topic",
+      "name": "产品专题 · 示例",
+      "defaultSceneId": "topic-default",
+      "scenes": [
+        {
+          "id": "topic-default",
+          "name": "专题背景",
+          "type": "image",
+          "assetIds": [
+            "product"
+          ],
+          "interval": 8,
+          "transform": {
+            "fit": "cover",
+            "scale": 1,
+            "x": 0,
+            "y": 0
+          }
+        }
+      ]
+    }
+  ],
+  "assets": {
+    "welcome": {
+      "id": "welcome",
+      "name": "开播背景示例.png",
+      "kind": "image",
+      "file": "welcome.png",
+      "bytes": 35142
+    },
+    "product": {
+      "id": "product",
+      "name": "产品背景示例.png",
+      "kind": "image",
+      "file": "product.png",
+      "bytes": 32400
+    },
+    "motion": {
+      "id": "motion",
+      "name": "静音循环示例.mp4",
+      "kind": "video",
+      "file": "motion.mp4",
+      "bytes": 702605
+    }
+  }
+}

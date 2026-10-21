@@ -1,0 +1,82 @@
+{
+  "name": "livescreen",
+  "version": "0.4.0",
+  "private": true,
+  "description": "LiveScreen 大屏内容管理与局域网控制",
+  "author": "arjuntam",
+  "license": "MIT",
+  "main": "src/desktop/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev-preview",
+    "test": "node --test tests/*.test.cjs",
+    "test:ui": "playwright test",
+    "check": "node scripts/check.cjs",
+    "build": "npm run check && electron-builder --dir",
+    "build:win": "npm run check && electron-builder --win nsis --x64 && node scripts/verify-windows.cjs",
+    "build:win:dir": "npm run check && electron-builder --win --x64 --dir",
+    "postinstall": "node node_modules/electron/install.js",
+    "build:mac:preview": "npm run check && electron-builder --config build/mac-preview.cjs --mac dir --arm64",
+    "preview": "electron . --dev-preview --data-dir=.local/mac-preview-data --port=0",
+    "build:mac": "npm run check && electron-builder --config build/mac.cjs --mac --arm64 && node scripts/package-mac-dmg.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "electron": "44.8.0",
+    "electron-builder": "26.15.3",
+    "jsqr": "1.4.0"
+  },
+  "build": {
+    "appId": "local.livescreen.player",
+    "productName": "LiveScreen",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "web/**/*",
+      "examples/**/*",
+      "package.json",
+      "assets/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "LiveScreen-Setup-${version}-${arch}.${ext}",
+      "signExecutable": false,
+      "icon": "assets/livescreen.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh",
+      "installerIcon": "assets/livescreen.ico",
+      "uninstallerIcon": "assets/livescreen.ico"
+    },
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.utilities"
+    }
+  },
+  "dependencies": {
+    "qrcode": "1.5.4"
+  },
+  "homepage": "https://arjuntam.github.io/LiveScreen/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arjuntam/LiveScreen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arjuntam/LiveScreen/issues"
+  }
+}

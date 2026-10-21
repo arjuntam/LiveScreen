@@ -1,0 +1,25 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src file: data:; media-src file:;">
+<title>LiveScreen LED 输出</title><link rel="stylesheet" href="player.css"></head>
+<body><div id="safe"><span>LiveScreen</span><small>等待安全背景</small></div><main id="stage"></main>
+<template id="guideTemplate">
+  <section class="pairing-guide generic-guide">
+    <header><strong>LiveScreen</strong><span data-guide-mode>手机配对指南</span></header>
+    <div class="guide-layout">
+      <div class="guide-steps">
+        <h1>手机连接大屏</h1>
+        <p class="guide-intro">连接同一网络，扫码打开控制页。</p>
+        <article><span class="guide-number">01</span><div><small data-guide-network-title>连接同一网络</small><h2 data-guide-network-name>正在读取网络信息</h2><p data-guide-network-detail></p></div></article>
+        <article><span class="guide-number">02</span><div><small>用手机相机扫描右侧二维码</small><h2>打开 LiveScreen 控制页</h2><p>也可以在浏览器输入二维码下方的地址</p></div></article>
+        <article><span class="guide-number">03</span><div><small>首次连接时</small><h2>输入屏幕上的配对码</h2><p>连接后按设置显示背景，点选场景即可切换</p></div></article>
+      </div>
+      <aside class="guide-connect">
+        <h3>扫码打开手机控制页</h3><div data-guide-connections></div>
+        <div class="guide-pin-block"><small>首次连接配对码</small><strong data-guide-code>······</strong><span data-guide-expiry></span></div>
+        <p class="guide-remember">配对一次，以后同一浏览器自动连接</p>
+      </aside>
+    </div>
+    <footer>手机与电脑需要网络互通。二维码打开控制页；更换网络后请扫描更新的二维码。</footer>
+  </section>
+</template>
+<script src="player.js"></script></body></html>
