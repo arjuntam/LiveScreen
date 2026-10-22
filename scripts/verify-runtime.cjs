@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),asar=require('@electron/as
 function verifyRuntime(archive,root) {
   const paths=asar.listPackage(archive);
   for(const relative of ['node_modules/pdfjs-dist/build/pdf.mjs','node_modules/pdfjs-dist/build/pdf.worker.mjs','node_modules/pdfjs-dist/LICENSE','LICENSE','THIRD-PARTY-NOTICES.txt']) {
-    if(!asar.extractFile(archive,relative).equals(fs.readFileSync(path.join(root,relative))))throw Error('Packaged dependency or license mismatch: '+relative);
+    if(!asar.extractFile(archive,path.normalize(relative)).equals(fs.readFileSync(path.join(root,relative))))throw Error('Packaged dependency or license mismatch: '+relative);
   }
   if(paths.some(p=>/node_modules[\\/]@napi-rs[\\/].+\.(node|dll|dylib)$/.test(p)))throw Error('Optional native PDF canvas must not be bundled');
   if(paths.some(p=>/company-guide-assets|wireless-auth\.jpg|enterprise\.jpg/.test(p)))throw Error('Private guide asset in runtime');
