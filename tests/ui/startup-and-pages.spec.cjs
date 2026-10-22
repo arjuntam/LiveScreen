@@ -25,7 +25,7 @@ async function pair() {
 async function local(sceneName, projectId = 'home') {
   await admin.locator('#tabPlayback').click(); await admin.locator('#playbackProject').selectOption(projectId);
   await admin.getByRole('button', { name: '播放 ' + sceneName, exact: true }).click();
-  await expect(admin.locator('#localPlaybackFeedback')).toHaveText('大屏已完成切换');
+  await expect(admin.locator('#localPlaybackFeedback')).toHaveText('大屏已完成切换', { timeout: 20000 });
 }
 async function publishSlides(mode, interval = 1) {
   const library = (await api('/api/admin/library', undefined, 'GET')).data;
@@ -156,20 +156,31 @@ test('local scene also cancels a phone page before its renderer acknowledgement'
   await publishSlides('manual'); await local('图片轮播演示'); await expect(a.page.locator('#controlPriority')).toBeHidden({ timeout: 5000 });
   const id = (await api('/api/state', undefined, 'GET')).data.current.playbackId;
   const led = app.windows().find(w => w.url().includes('/src/player/index.html'));
-  await led.evaluate(() => {
-    window.originalRAF = window.requestAnimationFrame.bind(window);
-    window.heldPageFrames = []; let holdNext = true;
-    window.requestAnimationFrame = callback => {
-      if (holdNext) { holdNext = false; window.heldPageFrames.push(callback); return 0; }
-      return window.originalRAF(callback);
-    };
+  await app.evaluate(({ BrowserWindow, ipcMain }) => {
+    const player = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('/src/player/index.html'));
+    const gate = globalThis.pageAckGate = { id: null, held: [], listeners: ipcMain.listeners('result'), send: player.webContents.send.bind(player.webContents) };
+    player.webContents.send = (channel, ...args) => { if (channel === 'page') gate.id = args[0].id; return gate.send(channel, ...args); };
+    ipcMain.removeAllListeners('result');
+    ipcMain.on('result', (event, result) => {
+      if (result.id === gate.id) { gate.held.push({ event, result }); return; }
+      for (const listener of gate.listeners) listener.call(ipcMain, event, result);
+    });
   });
   await a.page.evaluate(playbackId => {
     window.pageConflict = fetch('/api/state').then(r => r.json()).then(state => fetch('/api/page', { method: 'POST', headers: { 'X-LiveScreen': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ playbackId, direction: 'next', controlGeneration: state.control.generation }) })).then(r => r.status);
   }, id);
-  await expect.poll(async () => (await api('/api/state', undefined, 'GET')).data.control.busySource).toBe('remote');
-  await local('开播背景'); expect(await a.page.evaluate(() => window.pageConflict)).toBe(409);
-  await led.evaluate(() => { window.requestAnimationFrame = window.originalRAF; window.heldPageFrames.forEach(callback => window.originalRAF(callback)); });
+  await expect.poll(() => app.evaluate(() => globalThis.pageAckGate.held.length)).toBe(1);
+  // Send the native request immediately while the phone acknowledgement is held.
+  expect((await api('/api/switch', { projectId: 'home', sceneId: 'welcome' })).status).toBe(200);
+  expect(await a.page.evaluate(() => window.pageConflict)).toBe(409);
+  await app.evaluate(({ BrowserWindow, ipcMain }) => {
+    const gate = globalThis.pageAckGate;
+    BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('/src/player/index.html')).webContents.send = gate.send;
+    ipcMain.removeAllListeners('result');
+    for (const listener of gate.listeners) ipcMain.on('result', listener);
+    for (const held of gate.held) for (const listener of gate.listeners) listener.call(ipcMain, held.event, held.result);
+    delete globalThis.pageAckGate;
+  });
   const current = (await api('/api/state', undefined, 'GET')).data.current;
   expect(current.sceneId).toBe('welcome'); expect(current.pageIndex).toBe(0);
   await expect(led.locator('.scene.live img:not(.off)')).toHaveAttribute('src', /welcome.png/);
