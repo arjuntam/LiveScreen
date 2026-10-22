@@ -25,12 +25,17 @@ async function verifyBuild() {
   const root = path.resolve(__dirname, '..'); const version = require('../package.json').version;
   const installer = path.join(root, 'dist', `LiveScreen-Setup-${version}-x64.exe`);
   const { getPath7za } = require('app-builder-lib/out/toolsets/7zip');
-  const tool = await getPath7za(); const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'livescreen-installer-check-'));
+  // The builder's minimal Windows 7za reads the embedded app archive but
+  // omits NSIS virtual files. Use the full NSIS-capable 7-Zip on Windows.
+  const full7zip = path.join(process.env.ProgramFiles || 'C:\\Program Files', '7-Zip', '7z.exe');
+  const tool = process.platform === 'win32' ? full7zip : await getPath7za();
+  if (!fs.existsSync(tool)) throw new Error('Install the full 7-Zip distribution to verify NSIS installers on Windows');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'livescreen-installer-check-'));
   try {
     const checks = { installer: verifyNsis(fs.readFileSync(installer)) };
     // NSIS virtual directory separators differ between 7-Zip builds. Extract
     // the archive flat, then verify the exact filenames and their CRCs below.
-    execFileSync(tool, ['e', '-y', `-o${temp}`, installer], { stdio: 'pipe' });
+    execFileSync(tool, ['e', '-tNsis', '-y', `-o${temp}`, installer], { stdio: 'pipe' });
     for (const filename of ['Uninstall LiveScreen.exe', 'livescreen-repaired-uninstaller.exe']) {
       if (!fs.existsSync(path.join(temp, filename))) throw new Error(`Missing ${filename}; extracted files: ${fs.readdirSync(temp).join(', ')}`);
     }
