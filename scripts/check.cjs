@@ -8,7 +8,7 @@ const os = require('node:os');
 const root = path.resolve(__dirname, '..');
 function files(dir) { return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(path.join(dir, e.name)) : [path.join(dir, e.name)]); }
 let count = 0;
-for (const file of ['src', 'web', 'scripts', 'tests'].flatMap(d => files(path.join(root, d))).filter(f => /\.(cjs|js)$/.test(f))) {
+for (const file of ['src', 'web', 'scripts', 'tests'].flatMap(d => files(path.join(root, d))).filter(f => /\.(cjs|js|mjs)$/.test(f))) {
   const r = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
   if (r.status !== 0) { process.stderr.write(r.stderr); process.exit(1); } count++;
 }

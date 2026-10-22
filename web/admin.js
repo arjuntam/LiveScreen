@@ -185,6 +185,10 @@ async function readSystem() {
   $('#previewTools').hidden = !system.preview || !window.livescreenDesktop;
   $('#toggleOutput').textContent = system.settings.outputPaused ? '恢复大屏输出' : '暂停大屏输出';
   renderConnections(system);
+  const size=system.outputSize, ratio=size?.width>0 && size?.height>0 ? size.width/size.height : 16/9;
+  document.documentElement.style.setProperty('--output-ratio',ratio);
+  $('#preview').style.aspectRatio=String(ratio);
+  $('#previewCaption').textContent=(size ? `${size.width} × ${size.height}${size.preview ? ' 模拟大屏' : ' 输出比例'}预览` : '16:9 参考预览（未绑定大屏）')+' · 拖动画面定位，右侧调整缩放';
   if (!networkNameDirty && networkVersion === networkNameVersion) $('#phoneNetworkName').value = system.phoneNetworkName || '';
   $('#transitionEnabled').checked = system.settings.transition.enabled;
   $('#transitionDuration').value = String(system.settings.transition.durationMs);

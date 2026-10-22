@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LiveScreen · 大屏内容管理</title><link rel="icon" href="/favicon.ico?v=0.4.0"><link rel="icon" type="image/svg+xml" href="/icon.svg?v=0.4.0"><link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0.4.0"><meta name="apple-mobile-web-app-title" content="LiveScreen"><link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/style.css"></head><body class="admin-page">
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LiveScreen · 大屏内容管理</title><link rel="icon" href="/favicon.ico?v=0.5.0"><link rel="icon" type="image/svg+xml" href="/icon.svg?v=0.5.0"><link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0.5.0"><meta name="apple-mobile-web-app-title" content="LiveScreen"><link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/style.css"></head><body class="admin-page">
 <header class="topbar"><div class="brand">LiveScreen <h1>大屏内容管理</h1></div><section id="previewTools" class="preview-tools" hidden><span>Mac 预览 · 独立测试数据</span><button id="previewPlayer">模拟大屏</button><button id="previewPhone">手机预览</button></section><div class="toolbar"><span id="connection" class="status">等待连接</span><button class="danger" data-quit data-native-only hidden>退出软件</button><button data-admin-logout hidden>退出管理登录</button></div></header>
 <main class="shell"><div id="message" class="notice" role="status" hidden></div>
 <form id="login" class="login"><h1>远程大屏管理</h1><p>在 LED 电脑本机打开软件无需登录。其他电脑访问管理页时，输入远程管理口令。</p><label for="loginSecret">远程管理口令</label><div class="password-field"><input id="loginSecret" name="secret" type="password" autocomplete="current-password" required><button type="button" data-password-toggle="loginSecret" aria-pressed="false">显示</button></div><p id="loginFeedback" class="inline-feedback" role="status"></p><button class="primary" type="submit">进入管理</button></form>
@@ -13,13 +13,13 @@
 <aside class="panel library-sidebar">
 <details class="project-list" open><summary>内容项目</summary><div id="projects"></div><div class="toolbar"><button id="newProject">＋ 新建项目</button><button id="projectUp" aria-label="项目上移">↑</button><button id="projectDown" aria-label="项目下移">↓</button></div></details>
 <div id="projectEditor"><details class="project-options"><summary>项目设置</summary><label>项目名称<input id="projectName" maxlength="80"></label><div class="toolbar"><button id="copyProject">复制项目</button><button id="deleteProject" class="danger">删除项目</button></div></details>
-<div class="section-head scene-list-head"><h2>场景</h2><button id="newScene">＋ 新建场景</button></div><div id="scenes"></div></div></aside>
+<div class="section-head scene-list-head"><h2>场景</h2><button id="newScene">＋ 新建场景</button></div><button id="importPresentation" class="import-entry">导入 PPT / PDF</button><div id="scenes"></div></div></aside>
 <div id="noProject" class="panel empty" hidden>暂无项目，点击“新建项目”开始。</div>
 <section id="sceneEditor" class="panel scene-form" hidden>
 <div class="section-head scene-editor-bar"><div><h2>编辑场景</h2><small>编辑与保存不会改变大屏</small></div><div class="toolbar"><button id="testScene">投到大屏测试</button><button id="saveScene" class="primary">保存场景</button></div></div>
 <p id="sceneSaveFeedback" class="inline-feedback" role="status">已保存</p>
 <div class="scene-body">
-<div class="canvas-column"><div id="preview" class="preview" aria-label="场景 16:9 预览"></div><p class="preview-caption">16:9 预览 · 拖动画面定位，右侧调整缩放</p>
+<div class="canvas-column"><div id="preview" class="preview" aria-label="场景输出比例预览"></div><p id="previewCaption" class="preview-caption">16:9 参考预览 · 拖动画面定位，右侧调整缩放</p>
 <div class="toolbar upload-toolbar"><label class="file-label">＋ 上传本地素材<input id="upload" type="file" accept=".png,.jpg,.jpeg,.webp,.mp4"></label><small id="uploadStatus">每个文件最多 512 MB</small></div>
 <p id="testFeedback" class="inline-feedback" role="status">点击测试会改变大屏画面，不会发布草稿。</p>
 <h3>当前场景素材</h3><div id="assets" class="asset-picker"></div><div id="assetOrder"></div></div>
@@ -39,5 +39,14 @@
 <section class="panel"><h2>场景切换过渡</h2><form id="playbackSettings"><label class="check-label"><input id="transitionEnabled" type="checkbox" checked>启用渐变过渡</label><label>渐变时长<select id="transitionDuration"><option value="200">快速 · 0.2 秒</option><option value="300" selected>标准 · 0.3 秒</option><option value="600">柔和 · 0.6 秒</option></select></label><button>保存过渡设置</button><p id="playbackFeedback" class="inline-feedback" role="status"></p></form><p class="muted">默认开启。下一次切换生效；关闭后直接切换。</p></section>
 <section class="panel"><h2>远程管理口令</h2><p class="muted">在这台电脑打开软件无需输入。只有其他电脑访问管理页时需要。</p><form id="adminPassword"><label for="adminSecret">新的远程管理口令（至少 12 位）</label><div class="password-field"><input id="adminSecret" name="secret" type="password" minlength="12" maxlength="128" required autocomplete="new-password"><button type="button" data-password-toggle="adminSecret" aria-pressed="false">显示</button></div><button type="submit">保存远程管理口令</button><p id="passwordFeedback" class="inline-feedback" role="status"></p></form><div data-native-only hidden><h3>本机数据目录</h3><p id="dataRoot" class="muted"></p></div></section>
 <section class="panel" data-native-only hidden><h2>退出软件</h2><p>退出会关闭 LED 播放窗口和手机控制服务，之后可独立使用 Office PowerPoint 手动双屏放映。</p><button id="quit" class="danger" data-quit data-native-only hidden>退出软件</button><p class="muted">窗口 X 会收进后台，继续播放。点击托盘可重新打开；只有明确点“退出软件”才彻底退出。开会前请先“暂停大屏输出”，结束后再恢复。</p></section></div>
-<footer class="footer"><span>LiveScreen 0.4.0 · 电脑主控 / 手机辅助</span><span>保存草稿 → 发布项目 → 电脑或手机播放</span><button id="exitApp" class="danger" data-quit data-native-only hidden>退出软件</button></footer></section></main>
-<script src="/common.js"></script><script src="/admin.js"></script></body></html>
+<footer class="footer"><span>LiveScreen 0.5.0 · 电脑主控 / 手机辅助</span><span>保存草稿 → 发布项目 → 电脑或手机播放</span><button id="exitApp" class="danger" data-quit data-native-only hidden>退出软件</button></footer></section></main>
+<dialog id="presentationDialog" aria-labelledby="presentationTitle">
+<div class="import-heading"><div><h2 id="presentationTitle">导入演示文稿</h2><p>将每页转换为图片，不导入动画、视频或交互。</p></div><button id="cancelPresentation" aria-label="取消导入">取消</button></div>
+<p id="presentationEnvironment" class="muted" role="status">正在检查转换工具…</p>
+<label class="file-label" id="presentationChoose">选择 PPT / PPTX / PDF<input id="presentationFile" type="file" accept=".ppt,.pptx,.pdf"></label>
+<p class="muted import-limits">单个文件最多 128 MB、200 页；一个场景可选择最多 50 页。文件上传到大屏主机，在主机本地转换。</p>
+<p id="presentationStatus" class="inline-feedback" role="status"></p><progress id="presentationProgress" max="100" value="0" hidden></progress>
+<section id="presentationSelection" hidden><div class="import-options"><label>场景名称<input id="presentationName" maxlength="80"></label><button id="presentationSelectAll">选前 50 页</button><button id="presentationSelectNone">清空选择</button><span id="presentationCount"></span></div><div id="presentationPages" class="import-pages"></div></section>
+<footer class="import-footer"><small>导入不会改变大屏；创建场景后，仍需保存和发布。</small><button id="confirmPresentation" class="primary" disabled>创建多图场景</button></footer>
+</dialog>
+<script src="/common.js"></script><script src="/admin.js"></script><script src="/presentation.js"></script></body></html>

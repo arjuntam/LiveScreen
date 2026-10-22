@@ -15,6 +15,8 @@ const { bindingFor, resolveDisplay, describe } = require('./displays.cjs');
 const { createShutdown } = require('./shutdown.cjs');
 const { createLoginItems, silentLoginLaunch } = require('./login-items.cjs');
 const { outputWindowOptions, positionOutputWindow } = require('./output-window.cjs');
+const { createPresentationImporter } = require('../core/presentation-import.cjs');
+const { createPresentationAdapter } = require('./presentation-adapter.cjs');
 const root = path.resolve(__dirname, '../..');
 const packagedPreview = process.platform === 'darwin' && app.isPackaged && require(path.join(root, 'package.json')).livescreenPreview === true;
 const preview = packagedPreview || (!app.isPackaged && process.argv.includes('--dev-preview'));
@@ -72,9 +74,14 @@ async function start() {
   store = new Store(app.getPath('userData'), path.join(root, 'examples'));
   auth = new Auth(store.root); controller = new Controller(store, player);
   const portArg = !app.isPackaged && process.argv.find(a => a.startsWith('--port='));
-  api = createControlServer({ store, controller, auth, webRoot: path.join(root, 'web'), allowedInterfaces: [],
+  const presentationImporter = createPresentationImporter({ store, adapter: createPresentationAdapter({ BrowserWindow, ipcMain }) });
+  api = createControlServer({ store, controller, auth, webRoot: path.join(root, 'web'), allowedInterfaces: [], presentationImporter,
     desktop: {
       displays: () => screen.getAllDisplays().map(d => describe(d, screen.getPrimaryDisplay().id)),
+      outputSize: () => {
+        const d = resolveDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay().id, store.settings.display);
+        return d ? { width:d.bounds.width, height:d.bounds.height, scaleFactor:d.scaleFactor || 1 } : preview || smoke ? { width:960, height:540, preview:true } : null;
+      },
       bindDisplay: async id => {
         const d = screen.getAllDisplays().find(d => String(d.id) === String(id));
         if (!d || d.id === screen.getPrimaryDisplay().id || d.internal) throw Object.assign(new Error('请选择非主显示器的外接 LED 扩展屏'), { status: 400 });

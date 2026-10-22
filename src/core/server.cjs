@@ -65,7 +65,7 @@ async function upload(req, store) {
     return asset;
   } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
 }
-function createControlServer({ store, controller, auth, webRoot, desktop = {}, allowedInterfaces = [] }) {
+function createControlServer({ store, controller, auth, webRoot, desktop = {}, allowedInterfaces = [], presentationImporter }) {
   const clients = new Set(); const servers = []; const sockets = new Set();
   let closed = false, closePromise, listenerPort, networkErrors = [], networkUpdatedAt = null;
   let networkWork = Promise.resolve();
@@ -167,6 +167,18 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
         return json(res, 200, { current: await controller.setSlideshowPaused(b.playbackId, b.paused, source) });
       }
       if (req.method === 'GET' && route === '/api/admin/library') return json(res, 200, { ...store.data, hasUnpublishedChanges: !isDeepStrictEqual(store.data.draft, store.data.published) });
+      if (route.startsWith('/api/admin/imports')) {
+        if (!presentationImporter) throw new AppError('此运行环境未启用文稿导入，请使用正式软件', 503);
+        if (req.method === 'GET' && route === '/api/admin/imports/capabilities') return json(res,200,await presentationImporter.capabilities());
+        if (req.method === 'POST' && route === '/api/admin/imports/upload') return json(res,202,await presentationImporter.upload(req));
+        const match = /^\/api\/admin\/imports\/([a-f0-9-]{36})(?:\/(commit|pages\/(\d+)\.png))?$/.exec(route);
+        if (!match) throw new AppError('导入地址无效',404);
+        if (req.method === 'GET' && match[3] !== undefined) return serveFile(req,res,presentationImporter.page(match[1],Number(match[3])));
+        if (req.method === 'GET' && !match[2]) return json(res,200,presentationImporter.get(match[1]));
+        if (req.method === 'POST' && match[2] === 'commit') return json(res,200,presentationImporter.commit(match[1],await jsonBody(req)));
+        if (req.method === 'DELETE' && !match[2]) { await presentationImporter.cancel(match[1]); return json(res,200,{ok:true}); }
+        throw new AppError('导入操作无效',404);
+      }
       if (req.method === 'POST' && route === '/api/admin/test-scene') {
         const b = await jsonBody(req);
         const [project] = validateProjects([{ id: b.projectId, name: b.projectName, defaultSceneId: b.scene?.id, scenes: [b.scene] }], store);
@@ -224,7 +236,7 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
         return json(res, 200, { settings: { ...store.settings, port: servers[0]?.address()?.port || store.settings.port }, ...(await networkInfo()),
           displays: native ? desktop.displays?.() || [] : [], platform: process.platform, localControls: native,
           dataRoot: native ? store.root : null, preview: native && !!desktop.preview, autoStartSupported: native && (desktop.autoStartSupported || false),
-          autoStartStatus: native ? desktop.loginStatus?.() || null : null });
+          autoStartStatus: native ? desktop.loginStatus?.() || null : null, outputSize: desktop.outputSize?.() || null });
       }
       if (req.method === 'POST' && route === '/api/admin/display') {
         const b = await jsonBody(req); await desktop.bindDisplay?.(b.id); return json(res, 200, { ok: true });
@@ -250,7 +262,7 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
         json(res, 200, { ok: true }); setTimeout(() => desktop.quit(), 100); return;
       }
       if (['GET', 'HEAD'].includes(req.method) && /^\/media\/[a-zA-Z0-9_-]+$/.test(route)) return serveFile(req, res, store.assetPath(route.slice(7)));
-      const staticFiles = { '/favicon.ico': '../assets/livescreen.ico', '/icon.svg': '../assets/livescreen.svg', '/apple-touch-icon.png': '../assets/livescreen.png', '/': 'index.html', '/admin': 'admin.html', '/app.js': 'app.js', '/admin.js': 'admin.js', '/common.js': 'common.js', '/style.css': 'style.css', '/tokens.css': 'tokens.css' };
+      const staticFiles = { '/favicon.ico': '../assets/livescreen.ico', '/icon.svg': '../assets/livescreen.svg', '/apple-touch-icon.png': '../assets/livescreen.png', '/': 'index.html', '/admin': 'admin.html', '/app.js': 'app.js', '/admin.js': 'admin.js', '/presentation.js': 'presentation.js', '/common.js': 'common.js', '/style.css': 'style.css', '/tokens.css': 'tokens.css' };
       if (['GET', 'HEAD'].includes(req.method) && staticFiles[route]) return serveFile(req, res, path.join(webRoot, staticFiles[route]));
       throw new AppError('页面或接口不存在', 404);
     } catch (e) {
@@ -330,7 +342,7 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
       if (closed) return closePromise; closed = true;
       clearInterval(heartbeat); controller.off('state', broadcast);
       for (const c of clients) c.res.end(); clients.clear();
-      closePromise = networkWork.catch(() => {}).then(() => Promise.all(servers.map(closeListener)));
+      closePromise = networkWork.catch(() => {}).then(() => Promise.all([...servers.map(closeListener), presentationImporter?.close()]));
       return closePromise;
     }
   };

@@ -23,6 +23,7 @@ function verifyNsis(buffer) {
 }
 async function verifyBuild() {
   const root = path.resolve(__dirname, '..'); const version = require('../package.json').version;
+  require('./verify-runtime.cjs').verifyRuntime(path.join(root,'dist/win-unpacked/resources/app.asar'),root);
   const installer = path.join(root, 'dist', `LiveScreen-Setup-${version}-x64.exe`);
   const { getPath7za } = require('app-builder-lib/out/toolsets/7zip');
   // The builder's minimal Windows 7za reads the embedded app archive but

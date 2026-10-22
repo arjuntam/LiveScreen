@@ -1,6 +1,6 @@
 {
   "name": "livescreen",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "LiveScreen 大屏内容管理与局域网控制",
   "author": "arjuntam",
@@ -35,7 +35,14 @@
       "web/**/*",
       "examples/**/*",
       "package.json",
-      "assets/**/*"
+      "assets/**/*",
+      "!node_modules/pdfjs-dist/legacy/**/*",
+      "!node_modules/pdfjs-dist/web/**/*",
+      "!node_modules/pdfjs-dist/image_decoders/**/*",
+      "!node_modules/pdfjs-dist/**/*.map",
+      "!node_modules/@napi-rs/**/*",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.txt"
     ],
     "directories": {
       "output": "dist"
@@ -69,7 +76,8 @@
     }
   },
   "dependencies": {
-    "qrcode": "1.5.4"
+    "qrcode": "1.5.4",
+    "pdfjs-dist": "6.2.108"
   },
   "homepage": "https://arjuntam.github.io/LiveScreen/",
   "repository": {

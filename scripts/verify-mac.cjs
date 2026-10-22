@@ -5,6 +5,7 @@ const asar = require('@electron/asar');
 const root = path.resolve(__dirname, '..'), version = require('../package.json').version;
 const out = path.join(root, 'dist/mac'), app = path.join(out, 'mac-arm64/LiveScreen.app');
 const archive = path.join(app, 'Contents/Resources/app.asar');
+require('./verify-runtime.cjs').verifyRuntime(archive,root);
 function files(dir) { return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(path.join(dir,e.name)) : [path.join(dir,e.name)]); }
 let count = 0;
 for (const file of ['src','web','assets','examples'].flatMap(dir => files(path.join(root,dir)))) {
