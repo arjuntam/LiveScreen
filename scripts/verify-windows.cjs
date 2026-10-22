@@ -28,7 +28,12 @@ async function verifyBuild() {
   const tool = await getPath7za(); const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'livescreen-installer-check-'));
   try {
     const checks = { installer: verifyNsis(fs.readFileSync(installer)) };
-    execFileSync(tool, ['e', '-y', `-o${temp}`, installer, '$R0/Uninstall LiveScreen.exe', '$PLUGINSDIR/livescreen-repaired-uninstaller.exe'], { stdio: 'pipe' });
+    // NSIS virtual directory separators differ between 7-Zip builds. Extract
+    // the archive flat, then verify the exact filenames and their CRCs below.
+    execFileSync(tool, ['e', '-y', `-o${temp}`, installer], { stdio: 'pipe' });
+    for (const filename of ['Uninstall LiveScreen.exe', 'livescreen-repaired-uninstaller.exe']) {
+      if (!fs.existsSync(path.join(temp, filename))) throw new Error(`Missing ${filename}; extracted files: ${fs.readdirSync(temp).join(', ')}`);
+    }
     const uninstaller = fs.readFileSync(path.join(temp, 'Uninstall LiveScreen.exe'));
     checks.uninstaller = verifyNsis(uninstaller);
     const repair = fs.readFileSync(path.join(temp, 'livescreen-repaired-uninstaller.exe'));
