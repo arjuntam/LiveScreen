@@ -50,7 +50,7 @@ test('scene sound is opt-in, editor stays silent, commit switches audio and fail
  }finally{await close(app);fs.rmSync(data,{recursive:true,force:true});}
 });
 test('remote manager can migrate media, pause/resume, set unattended startup and explicitly exit without reconnect spinner',async()=>{
- const data=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'livescreen-headless-'))),target=path.join(data,'new-media');fs.mkdirSync(target);let app,browser;
+ const data=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'livescreen-headless-'))),target=path.join(data,'new-media');fs.mkdirSync(target);let app,browser;
  try{
   const result=await launch(path.join(data,'host'));app=result.app;const admin=result.admin;const base=new URL(admin.url()).origin;
   browser=await chromium.launch({channel:'msedge',headless:true});const remote=await browser.newPage({viewport:{width:1440,height:900}});await remote.goto(base+'/admin');

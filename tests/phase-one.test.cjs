@@ -6,7 +6,7 @@ const {validateProjects}=require('../src/core/library.cjs');
 const {resolveDisplay}=require('../src/desktop/displays.cjs');
 const {createEmergencyAccess}=require('../src/desktop/emergency-access.cjs');
 const {createMediaLocation}=require('../src/core/media-location.cjs');
-function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'livescreen-phase1-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const canonical=fs.realpathSync(root);return {root:canonical,store:new Store(path.join(canonical,'host'),path.resolve(__dirname,'../examples')),target:path.join(canonical,'target')};}
+function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'livescreen-phase1-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const canonical=fs.realpathSync.native(root);return {root:canonical,store:new Store(path.join(canonical,'host'),path.resolve(__dirname,'../examples')),target:path.join(canonical,'target')};}
 test('legacy video scenes remain silent, audio is per video scene and rejects invalid values',t=>{
  const {store}=fixture(t); const p=structuredClone(store.data.draft);let result=validateProjects(p,store);assert.equal(result[0].scenes.find(s=>s.type==='video').audioEnabled,false);
  p[0].scenes.find(s=>s.type==='video').audioEnabled=true;p[0].scenes[0].audioEnabled=true;
