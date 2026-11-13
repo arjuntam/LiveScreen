@@ -35,7 +35,9 @@ function validateProjects(input, store, allowEmpty = false) {
       insist(['auto', 'manual'].includes(slideshowMode), '多图播放方式无效');
       const pauseOnManual = s.pauseOnManual ?? false;
       insist(typeof pauseOnManual === 'boolean', '手动翻页后暂停设置无效');
-      return { id: s.id, name: s.name.trim(), label: (s.label || '').trim(), type: s.type, assetIds: [...s.assetIds], interval, slideshowMode, pauseOnManual, transform };
+      const audioEnabled = s.audioEnabled ?? false;
+      insist(typeof audioEnabled === 'boolean', '视频声音设置无效');
+      return { id: s.id, name: s.name.trim(), label: (s.label || '').trim(), type: s.type, assetIds: [...s.assetIds], interval, slideshowMode, pauseOnManual, audioEnabled: s.type === 'video' && audioEnabled, transform };
     });
     insist(allowEmpty || sceneIds.has(p.defaultSceneId), '项目必须指定有效默认场景');
     return { id: p.id, name: p.name.trim(), defaultSceneId: p.defaultSceneId || scenes[0]?.id || null, scenes };

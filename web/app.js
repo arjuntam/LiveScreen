@@ -17,7 +17,7 @@ function render(next) {
 }
 function renderCards() {
   if (!state) return;
-  const localActive = !!state.control?.localActive;
+  const localActive = !!(state.control?.localActive || state.control?.managerActive);
   $('#controlPriority').hidden = !localActive;
   LS.renderPages($('#pageControls'), state, turnPage, online && !requesting && !localActive, false, false, setSlideshow);
   const p = state.projects.find(p => p.id === selectedId);
@@ -26,7 +26,7 @@ function renderCards() {
   $('#hint').textContent = p ? '点一个场景，切换 LED 背景。' : '先选项目，再点场景。';
   const items = p ? p.scenes.map((s, i) => {
     const current = !state.current?.isTest && state.current?.projectId === p.id && state.current?.sceneId === s.id;
-    const thumb = el('div', { className: 'thumb' }, s.type === 'video' ? [el('span', { text: '▶ 静音循环' })] : [el('img', { src: '/media/' + s.assetIds[0], alt: '', loading: 'lazy' })]);
+    const thumb = el('div', { className: 'thumb' }, s.type === 'video' ? [el('span', { text: s.audioEnabled ? '▶ 有声视频' : '▶ 静音循环' })] : [el('img', { src: '/media/' + s.assetIds[0], alt: '', loading: 'lazy' })]);
     const label = typeof s.label === 'string' ? s.label.trim() : '';
     const button = el('button', { className: 'scene-card', 'aria-pressed': String(current), onClick: () => switchScene(p.id, s.id) }, [thumb, el('strong', { text: s.name }), ...(label ? [el('small', { className: 'scene-label', text: label })] : []), el('small', { text: current ? '✓ 当前播放' : `场景 ${String(i + 1).padStart(2, '0')}` })]);
     button.disabled = !online || state.busy || requesting || localActive; return button;

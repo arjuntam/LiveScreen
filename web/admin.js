@@ -57,6 +57,8 @@ function renderEditor() {
   $('#slideshowModeLabel').hidden = s.type !== 'slideshow'; $('#intervalLabel').hidden = s.type !== 'slideshow' || s.slideshowMode === 'manual';
   $('#pauseOnManualLabel').hidden = s.type !== 'slideshow' || s.slideshowMode === 'manual';
   $('#pauseOnManual').value = s.pauseOnManual ? 'pause' : 'continue';
+  $('#videoAudioLabel').hidden = s.type !== 'video';
+  $('#videoAudioHint').hidden = s.type !== 'video'; $('#videoAudio').checked = s.audioEnabled === true;
   status(); renderAssets(); renderPreview();
 }
 function renderAssets() {
@@ -118,6 +120,7 @@ for (const [id, field] of [['#fit', 'fit'], ['#scale', 'scale'], ['#offsetX', 'x
 $('#interval').oninput = e => { scene().interval = Number(e.target.value); changed(); };
 $('#slideshowMode').onchange = e => { scene().slideshowMode = e.target.value; changed(); renderEditor(); };
 $('#pauseOnManual').onchange = e => { scene().pauseOnManual = e.target.value === 'pause'; changed(); };
+$('#videoAudio').onchange = e => { scene().audioEnabled = e.target.checked; changed(); };
 $('#resetTransform').onclick = () => { scene().transform = { fit: 'cover', scale: 1, x: 0, y: 0 }; changed(); renderEditor(); };
 let drag;
 $('#preview').onpointerdown = e => { if (!scene()) return; const t = scene().transform; drag = { x: e.clientX, y: e.clientY, tx: t.x, ty: t.y }; e.currentTarget.setPointerCapture(e.pointerId); };
@@ -162,19 +165,18 @@ async function loadLibrary() {
 $('#reload').onclick = () => { if (!dirty || confirm('重新载入将放弃当前页面未保存的修改。继续？')) action(loadLibrary); };
 async function loadSystem() {
   if (systemLoading) return systemLoading;
-  const fields = ['#afterPairingView', '#defaultProject', '#startupSettings button'].map(selector => $(selector));
+  const fields = ['#startupView', '#afterPairingView', '#defaultProject', '#outputMode', '#displaySelect', '#startupSettings button'].map(selector => $(selector));
   fields.forEach(field => { field.disabled = true; });
   systemLoading = readSystem().finally(() => { fields.forEach(field => { field.disabled = false; }); systemLoading = null; });
   return systemLoading;
 }
+let outputModeDirty = false;
 async function readSystem() {
   const networkVersion = networkNameVersion;
   system = await api('/api/admin/system');
   $('#platformNote').textContent = system.preview ? '当前是窗口式预览，不占用真实外接屏。' : system.platform === 'darwin' ? '请在 macOS「系统设置 → 显示器」中设为扩展显示器，关闭镜像。绑定后仅向所选屏幕输出。' : '请在 Windows 显示设置中使用“扩展这些显示器”。';
-  $('#displaySelect').replaceChildren(...system.displays.map(d => {
-    const option = el('option', { value: d.id, text: `${d.label} · ${d.bounds.width} × ${d.bounds.height}${d.primary ? '（运营主屏，不可选）' : d.internal ? '（内置屏，不可选）' : ''}` }); option.disabled = d.primary || d.internal; option.selected = d.id === system.settings.display?.id; return option;
-  }));
-  $('#bindDisplay').disabled = !system.displays.some(d => !d.primary && !d.internal);
+  if (!outputModeDirty) $('#outputMode').value = system.settings.outputMode || 'dual';
+  renderDisplays();
   const loginRequested = system.autoStartStatus && system.autoStartStatus.status !== 'unsupported' && system.autoStartStatus.status !== 'unavailable' ? system.autoStartStatus.requested : system.settings.autoStart;
   system.settings.autoStart = loginRequested;
   $('#autoStart').disabled = !system.autoStartSupported; $('#autoStart').textContent = loginRequested ? '关闭登录自启' : '开启登录自启';
@@ -193,12 +195,56 @@ async function readSystem() {
   $('#transitionEnabled').checked = system.settings.transition.enabled;
   $('#transitionDuration').value = String(system.settings.transition.durationMs);
   $('#transitionDuration').disabled = !$('#transitionEnabled').checked;
+  $('#startupView').value = system.settings.startupView || 'pairing-guide';
   $('#afterPairingView').value = system.settings.afterPairingView;
   const published = liveState?.projects || library.published;
   $('#defaultProject').replaceChildren(el('option', { value: '', text: '第一个已发布项目' }), ...published.map(p => el('option', { value: p.id, text: p.name })));
   $('#defaultProject').value = system.settings.defaultProjectId || '';
   $('#dataRoot').textContent = system.dataRoot;
+  $('#emergencyStatus').textContent = system.emergency?.message || '可通过主机托盘或再次打开 LiveScreen 找回管理。';
+  renderMedia(system.media);
+  if (system.media?.migrating) pollMedia();
 }
+function renderDisplays() {
+  const single = $('#outputMode').value === 'single';
+  $('#displaySelect').replaceChildren(...system.displays.map(d => {
+    const disabled = d.internal || (!single && d.primary);
+    const option = el('option', { value:d.id, text:`${d.label} · ${d.bounds.width} × ${d.bounds.height}${d.internal ? '（内置屏，不可选）' : d.primary ? single ? '（主屏）' : '（运营主屏，不可选）' : ''}` });
+    option.disabled = disabled; option.selected = d.id === system.settings.display?.id; return option;
+  }));
+  $('#bindDisplay').disabled = !system.displays.some(d => !d.internal && (single || !d.primary));
+}
+$('#outputMode').onchange = () => { outputModeDirty = true; renderDisplays(); };
+let mediaPolling = false;
+function renderMedia(info) {
+  if (!info) return;
+  $('#mediaCurrent').textContent = '当前目录：' + info.directory;
+  $('#mediaHealth').textContent = info.message;
+  $('#mediaHealth').classList.toggle('error', !info.available || !info.writable);
+  for (const id of ['chooseMedia','checkMedia','migrateMedia','mediaDirectory']) $('#'+id).disabled = info.migrating;
+  if (info.job) {
+    const job = info.job;
+    LS.feedback('#mediaFeedback', job.state === 'completed' ? '迁移完成，新上传与导入将使用此目录；原素材已保留。' : job.state === 'failed' ? job.error : `正在复制并校验 ${job.completed} / ${job.count} 个文件；当前播放继续使用原目录。`, job.state === 'failed');
+  }
+}
+async function pollMedia() {
+  if (mediaPolling) return; mediaPolling = true;
+  try {
+    let info;
+    do { info = await api('/api/admin/media'); renderMedia(info); if (info.migrating) await new Promise(resolve => setTimeout(resolve,500)); } while (info.migrating);
+  } catch(e) { LS.feedback('#mediaFeedback',e.message,true); }
+  finally { mediaPolling = false; }
+}
+$('#chooseMedia').onclick = () => action(async () => { const result = await api('/api/admin/media/choose',{method:'POST',body:{}}); if (result.directory) $('#mediaDirectory').value = result.directory; });
+$('#checkMedia').onclick = () => action(async () => {
+  try { const info = await api('/api/admin/media/check',{method:'POST',body:{directory:$('#mediaDirectory').value.trim()}}); LS.feedback('#mediaFeedback',`目录可用，将复制 ${info.count} 个素材，共 ${(info.bytes/1024**2).toFixed(1)} MB。`); }
+  catch(e) { LS.feedback('#mediaFeedback',e.message,true); }
+});
+$('#migrateMedia').onclick = () => action(async () => {
+  if (!confirm('将复制并校验全部素材后切换目录。迁移期间不能上传或确认导入，原素材会保留。是否继续？')) return;
+  try { renderMedia(await api('/api/admin/media/migrate',{method:'POST',body:{directory:$('#mediaDirectory').value.trim()}})); await pollMedia(); }
+  catch(e) { LS.feedback('#mediaFeedback',e.message,true); }
+});
 function renderConnections(info) {
   $('#pairAddresses').replaceChildren(...info.connections.map(c => el('figure', { className: 'connection-qr' }, [el('img', { src: c.qr, alt: '扫码打开 ' + c.url }), el('figcaption', { text: `${c.label || c.name} · ${c.url}` })])));
   const errors = info.network?.errors || [];
@@ -238,10 +284,10 @@ function renderLocalPlayback() {
     const current = !liveState.current?.isTest && liveState.current?.projectId === project.id && liveState.current?.sceneId === button.dataset.sceneId;
     button.setAttribute('aria-pressed', String(current));
     button.querySelector('.play-status').textContent = current ? '✓ 正在播放' : '点击播放';
-    const busy = liveState.busy && !(window.livescreenDesktop && liveState.control?.busySource !== 'local');
+    const busy = liveState.busy && !(nativeUI && liveState.control?.busySource !== 'local') && liveState.control?.busySource !== 'remote';
     button.disabled = !desktopOnline || localRequesting || busy || !liveState.output.connected || (!nativeUI && liveState.control?.localActive);
   });
-  LS.renderPages($('#localPageControls'), liveState, turnLocalPage, desktopOnline && !localRequesting, !!window.livescreenDesktop, true, setLocalSlideshow);
+  LS.renderPages($('#localPageControls'), liveState, turnLocalPage, desktopOnline && !localRequesting, nativeUI || (liveState.control?.busySource === 'remote' && !liveState.control?.localActive), true, setLocalSlideshow);
 }
 async function setLocalSlideshow(playbackId, paused) {
   localRequesting = true; renderLocalPlayback();
@@ -290,12 +336,12 @@ $('#networkHintForm').onsubmit = async e => {
   finally { button.disabled = false; }
 };
 $('#refreshNetwork').onclick = $('#refreshSystem').onclick;
-$('#bindDisplay').onclick = () => action(async () => { await api('/api/admin/display', { method: 'POST', body: { id: $('#displaySelect').value } }); message('LED 绑定已保存，等待显示器就绪'); await loadSystem(); });
+$('#bindDisplay').onclick = () => action(async () => { await api('/api/admin/display', { method: 'POST', body: { id: $('#displaySelect').value, mode: $('#outputMode').value } }); outputModeDirty = false; message('LED 绑定已保存，等待显示器就绪'); await loadSystem(); });
 $('#autoStart').onclick = () => action(async () => { await api('/api/admin/autostart', { method: 'POST', body: { enabled: !system.settings.autoStart, silent: $('#silentAutoStart').checked } }); await loadSystem(); });
 $('#silentAutoStart').onchange = () => action(async () => { await api('/api/admin/autostart', { method: 'POST', body: { enabled: system.settings.autoStart, silent: $('#silentAutoStart').checked } }); await loadSystem(); });
 $('#toggleOutput').onclick = () => action(async () => {
   const button = $('#toggleOutput'); button.disabled = true;
-  try { const result = await api('/api/admin/output', { method: 'POST', body: { paused: !liveState?.output.paused } }); button.textContent = result.paused ? '恢复大屏输出' : '暂停大屏输出'; message(result.paused ? '已暂停大屏输出，可以使用会议或 PPT。项目与素材保留。' : '正在恢复已绑定的大屏；请确认显示器。'); }
+  try { const result = await api('/api/admin/output', { method: 'POST', body: { paused: !liveState?.output.paused } }); button.textContent = result.paused ? '恢复大屏输出' : '暂停大屏输出'; message(result.paused ? '已暂停大屏输出。项目与素材保留。' : '正在恢复已绑定的大屏；请确认显示器。'); }
   finally { button.disabled = false; }
 });
 $('#previewPlayer').onclick = () => action(() => window.livescreenDesktop.previewPlayer());
@@ -308,7 +354,7 @@ $('#showGuide').onclick = async e => {
 };
 $('#startupSettings').onsubmit = async e => {
   e.preventDefault(); const button = e.target.querySelector('button'); button.disabled = true;
-  try { await api('/api/admin/startup', { method: 'POST', body: { afterPairingView: $('#afterPairingView').value, defaultProjectId: $('#defaultProject').value || null } }); LS.feedback('#startupFeedback', '已保存，下次开机的首台手机连接后生效'); }
+  try { await api('/api/admin/startup', { method: 'POST', body: { startupView: $('#startupView').value, afterPairingView: $('#afterPairingView').value, defaultProjectId: $('#defaultProject').value || null } }); LS.feedback('#startupFeedback', '已保存，下次启动时生效'); }
   catch (err) { LS.feedback('#startupFeedback', err.message, true); }
   finally { button.disabled = false; }
 };
@@ -387,8 +433,10 @@ $('#restoreScene').onclick = async e => {
 };
 for (const button of document.querySelectorAll('[data-quit]')) button.onclick = () => action(async () => {
   if (dirty && !confirm('退出会放弃尚未保存的修改，是否退出软件？')) return;
+  if (!nativeUI && !confirm('退出后大屏播放和网页服务都会停止，需要在主机重新启动软件。是否退出？')) return;
   await LS.quitApp(); dirty = false; source?.close(); $('#admin').hidden = true;
-  message('软件正在退出。LED 播放和手机服务将关闭，可使用 PowerPoint。');
+  $('#connection').textContent = '退出请求已受理'; $('#connection').className = 'status offline';
+  message('退出请求已受理，大屏播放和网页服务将停止。请在主机重新启动软件。');
 });
 for (const button of document.querySelectorAll('[data-admin-logout]')) button.onclick = () => action(async () => {
   if (dirty && !confirm('退出登录会放弃此页面尚未保存的修改，是否继续？')) return;
@@ -404,7 +452,7 @@ function configureManagement() {
   $('#tabSystem').textContent = nativeUI ? '设备与连接' : '连接与设置';
   $('#playbackHeading').textContent = nativeUI ? '电脑本地播放' : '远程大屏控制';
   if (!nativeUI) {
-    $('#playbackHelp').textContent = '选择已发布的场景播放到大屏，可翻页或暂停轮播。大屏电脑本机操作优先；主机暂停输出时，请在主机恢复。';
+    $('#playbackHelp').textContent = '选择已发布的场景播放到大屏，可翻页或暂停轮播。大屏电脑本机操作优先；可暂停或恢复大屏输出。远程管理员操作优先于手机。';
     $('#localPageControls').setAttribute('aria-label', '远程控制当前场景翻页');
   }
 }

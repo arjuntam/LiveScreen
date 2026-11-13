@@ -4,13 +4,16 @@ function describe(d, primaryId) {
     primary: d.id === primaryId, bounds: d.bounds, scaleFactor: d.scaleFactor, size: d.size };
 }
 function bindingFor(d) { return { id: String(d.id), label: d.label || '', internal: !!d.internal }; }
-function resolveDisplay(displays, primaryId, binding) {
+function eligibleDisplay(d, primaryId, mode = 'dual') {
+  return !d.internal && (mode === 'single' || d.id !== primaryId);
+}
+function resolveDisplay(displays, primaryId, binding, mode = 'dual') {
   if (!binding) return null;
-  const candidates = displays.filter(d => d.id !== primaryId && !d.internal);
+  const candidates = displays.filter(d => eligibleDisplay(d, primaryId, mode));
   const exact = candidates.find(d => String(d.id) === binding.id && (!binding.label || d.label === binding.label));
   if (exact) return exact;
   // Names and resolutions are often shared by meeting displays. An OS id
   // change requires explicit rebinding rather than guessing a physical device.
   return null;
 }
-module.exports = { describe, bindingFor, resolveDisplay };
+module.exports = { describe, bindingFor, resolveDisplay, eligibleDisplay };

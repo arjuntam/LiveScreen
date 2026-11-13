@@ -2,6 +2,7 @@
 const base = require('../package.json').build;
 module.exports = {
   ...base,
+  electronDist: require('node:path').join(require('node:path').dirname(require.resolve('electron/package.json')), 'dist'),
   appId: 'local.livescreen.player', productName: 'LiveScreen',
   extraMetadata: { livescreenPreview: false },
   directories: { output: 'dist/mac' },

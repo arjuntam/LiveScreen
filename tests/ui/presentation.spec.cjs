@@ -45,6 +45,19 @@ test('PPTX is converted by the installed host engine without changing playback',
   expect((await state()).current).toEqual(before.current);await admin.locator('#cancelPresentation').click();await expect(admin.locator('#presentationDialog')).not.toBeVisible();
   expect((await admin.evaluate(async()=>await(await fetch('/api/admin/imports/capabilities')).json())).activeJob).toBe(null);
 });
+test('a 53 megapixel image with a soft mask keeps all four colours in the selected-page preview',async()=>{
+  const before=await state();await importFile('high-resolution-image.pdf');
+  await expect(admin.locator('#presentationPages img')).toHaveCount(1);
+  const bytes=await admin.locator('#presentationPages img').evaluate(async img=>Array.from(new Uint8Array(await(await fetch(img.src)).arrayBuffer())));
+  const {PNG}=require('pngjs'),image=PNG.sync.read(Buffer.from(bytes));
+  expect(image.width*image.height).toBeLessThanOrEqual(4_010_000);
+  for(const [x,y,expected] of [[.25,.25,[230,50,50]],[.75,.25,[50,100,230]],[.25,.75,[50,180,80]],[.75,.75,[230,180,50]]]){
+    const offset=(Math.floor(image.height*y)*image.width+Math.floor(image.width*x))*4;
+    for(let channel=0;channel<3;channel++)expect(Math.abs(image.data[offset+channel]-expected[channel])).toBeLessThan(5);
+  }
+  expect((await state()).current).toEqual(before.current);
+  await admin.locator('#cancelPresentation').click();await expect(admin.locator('#presentationDialog')).not.toBeVisible();
+});
 test('portrait PDF preserves page proportions and an ordinary remote admin can upload',async()=>{
   // Obtain an ordinary admin session through the documented login endpoint.
   const credentials=fs.readFileSync(path.join(dataRoot,'首次安装口令.txt'),'utf8');

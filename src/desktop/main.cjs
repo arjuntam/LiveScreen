@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, screen, dialog, Menu, Tray, nativeImage, powerSaveBlocker, session, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, Menu, Tray, nativeImage, powerSaveBlocker, session, shell, globalShortcut } = require('electron');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
@@ -11,7 +11,8 @@ const { interfaces } = require('../core/network.cjs');
 const { createNetworkDetector } = require('./network-info.cjs');
 const detectNetwork = createNetworkDetector();
 const { buildConnections } = require('../core/connections.cjs');
-const { bindingFor, resolveDisplay, describe } = require('./displays.cjs');
+const { bindingFor, resolveDisplay, describe, eligibleDisplay } = require('./displays.cjs');
+const { createEmergencyAccess } = require('./emergency-access.cjs');
 const { createShutdown } = require('./shutdown.cjs');
 const { createLoginItems, silentLoginLaunch } = require('./login-items.cjs');
 const { outputWindowOptions, positionOutputWindow } = require('./output-window.cjs');
@@ -25,6 +26,7 @@ const loginItems = createLoginItems(app, process.platform, preview || smoke);
 let store, auth, controller, api, operator, playerWindow, tray, pending, quitting = false, reconciling = false, retryTimer, guideTimer, blocker, baseURL;
 let connections = [], networkTimer, networkRefreshing, lastNetworkMetadata = [];
 let activeDisplayId = null, previewPhoneWindow;
+const emergency = createEmergencyAccess(globalShortcut, () => { void setOutputPaused(true, '本机应急接管：大屏输出已暂停。', true).catch(error => store?.log('emergency-error', { error:error.message })); });
 const dataArg = !app.isPackaged && process.argv.find(a => a.startsWith('--data-dir='));
 if (packagedPreview) app.setPath('userData', path.join(app.getPath('appData'), 'LiveScreen-Preview'));
 else if (process.platform === 'darwin' && app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'LiveScreen'));
@@ -79,13 +81,19 @@ async function start() {
     desktop: {
       displays: () => screen.getAllDisplays().map(d => describe(d, screen.getPrimaryDisplay().id)),
       outputSize: () => {
-        const d = resolveDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay().id, store.settings.display);
+        const d = resolveDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay().id, store.settings.display, store.settings.outputMode);
         return d ? { width:d.bounds.width, height:d.bounds.height, scaleFactor:d.scaleFactor || 1 } : preview || smoke ? { width:960, height:540, preview:true } : null;
       },
-      bindDisplay: async id => {
+      bindDisplay: async (id, mode = store.settings.outputMode || 'dual') => {
+        if (!['dual', 'single'].includes(mode)) throw Object.assign(new Error('输出模式无效'), { status: 400 });
         const d = screen.getAllDisplays().find(d => String(d.id) === String(id));
-        if (!d || d.id === screen.getPrimaryDisplay().id || d.internal) throw Object.assign(new Error('请选择非主显示器的外接 LED 扩展屏'), { status: 400 });
-        store.saveSettings({ display: bindingFor(d) }); await reconcile();
+        if (!d || !eligibleDisplay(d, screen.getPrimaryDisplay().id, mode)) throw Object.assign(new Error('双屏模式请选择非主显示器；单屏模式可选择外接主屏，内置屏不可选'), { status: 400 });
+        store.saveSettings({ display: bindingFor(d), outputMode: mode }); await reconcile();
+      },
+      emergencyStatus: () => emergency.status(),
+      chooseMediaDirectory: async () => {
+        const result = await dialog.showOpenDialog(operator, { title: '选择主机素材目录', properties: ['openDirectory', 'createDirectory'] });
+        return result.canceled ? null : result.filePaths[0];
       },
       autoStartSupported: loginItems.supported, loginStatus: loginItems.read,
       setAutoStart: (enabled, silent) => { const state = loginItems.set(enabled); store.saveSettings({ autoStart: state.requested, silentAutoStart: silent }); },
@@ -122,6 +130,7 @@ async function start() {
     if (!url.startsWith(baseURL + '/admin')) e.preventDefault();
   });
   operator.on('close', e => { if (!quitting) { e.preventDefault(); tray ? operator.hide() : operator.minimize(); } });
+  emergency.register();
   await operator.loadURL(baseURL + '/admin');
   try {
     const iconPath = path.join(root, 'assets', process.platform === 'win32' ? 'livescreen.ico' : process.platform === 'darwin' ? 'trayTemplate.png' : 'livescreen.png');
@@ -204,6 +213,9 @@ async function refreshNetwork(force = false) {
 }
 function showOperator() {
   if (!operator || operator.isDestroyed() || quitting) return;
+  if (store?.settings.outputMode === 'single' && playerWindow) {
+    void setOutputPaused(true, '已由本机接管，恢复输出请点击“恢复大屏输出”。').catch(error => store.log('takeover-error', { error: error.message }));
+  }
   if (operator.isMinimized()) operator.restore();
   operator.show(); operator.focus();
 }
@@ -241,7 +253,7 @@ async function reconcile() {
   if (quitting || reconciling) return; reconciling = true;
   try {
     if (store.settings.outputPaused) { if (playerWindow) closePlayer(); controller.setOutput({ connected: false, paused: true, message: store.settings.outputPauseReason || 'LiveScreen 已暂停大屏输出。' }); return; }
-    const target = preview || smoke ? null : resolveDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay().id, store.settings.display);
+    const target = preview || smoke ? null : resolveDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay().id, store.settings.display, store.settings.outputMode);
     if (!target && !preview && !smoke) {
       if (store.settings.display) { store.saveSettings({ outputPaused: true, outputPauseReason: '未找到已绑定的大屏，LiveScreen 已暂停输出。请确认显示器后恢复。' }); closePlayer(); showOperator(); }
       return;
@@ -252,7 +264,7 @@ async function reconcile() {
     }
     const win = new BrowserWindow({ ...outputWindowOptions(target, process.platform), show: false,
       autoHideMenuBar: true, backgroundColor: '#071d32', skipTaskbar: !!target,
-      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } });
+      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' } });
     playerWindow = win; win.setMenu(null);
     activeDisplayId = target?.id ?? null;
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -273,6 +285,7 @@ const quit = createShutdown({
   onBegin: () => { quitting = true; },
   stopActivity: () => {
     clearInterval(retryTimer); clearInterval(guideTimer); clearInterval(networkTimer); rejectPending('程序已主动退出');
+    emergency.close();
     if (blocker !== undefined && powerSaveBlocker.isStarted(blocker)) powerSaveBlocker.stop(blocker);
   },
   closeWindows: () => { tray?.destroy(); previewPhoneWindow?.destroy(); operator?.destroy(); closePlayer(); },

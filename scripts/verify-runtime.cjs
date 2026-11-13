@@ -2,6 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),asar=require('@electron/asar');
 function verifyRuntime(archive,root) {
   const paths=asar.listPackage(archive);
+  if(paths.some(p=>/pdfjs-dist[\\/]build[\\/](?:.*\.min|pdf\.sandbox.*)\.mjs$/.test(p)))throw Error('Redundant PDF bundles in runtime');
   for(const relative of ['node_modules/pdfjs-dist/build/pdf.mjs','node_modules/pdfjs-dist/build/pdf.worker.mjs','node_modules/pdfjs-dist/LICENSE','LICENSE','THIRD-PARTY-NOTICES.txt']) {
     if(!asar.extractFile(archive,path.normalize(relative)).equals(fs.readFileSync(path.join(root,relative))))throw Error('Packaged dependency or license mismatch: '+relative);
   }

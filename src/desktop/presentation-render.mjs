@@ -10,7 +10,11 @@ try {
   const resources = new URL('../../node_modules/pdfjs-dist/', import.meta.url).href;
   task = getDocument({ data: new Uint8Array(bytes), isEvalSupported:false, enableXfa:false,
     cMapUrl:resources+'cmaps/', cMapPacked:true, standardFontDataUrl:resources+'standard_fonts/', wasmUrl:resources+'wasm/',
-    maxImageSize:16_000_000, stopAtErrors:true, useSystemFonts:true });
+    // maxImageSize discards the source image; it does not resize the preview.
+    // Use PDF.js image resizing instead, so large slide images and soft masks
+    // retain their content. This canvas budget is not a decoder memory limit;
+    // conversion still runs one page at a time in a disposable renderer.
+    maxImageSize:-1, canvasMaxAreaInBytes:16_000_000, stopAtErrors:true, useSystemFonts:true });
   const doc = await task.promise;
   if (doc.numPages > maxPages) { await send({ action:'total', total:doc.numPages }); throw new Error('too many pages'); }
   await send({ action:'total', total:doc.numPages });
