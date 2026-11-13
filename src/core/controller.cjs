@@ -9,6 +9,7 @@ class Controller extends EventEmitter {
     this.phoneSeen = false; this.autoPending = false; this.started = false; this.activeScene = null; this.recovery = null;
     this.operation = null; this.localPriorityUntil = 0; this.priorityTimer = null;
     this.controlGeneration = 0;
+    this.managerPriorityUntil = 0; this.managerTimer = null;
     this.output = { connected: false, message: '请先选择 LED 扩展显示器' };
   }
   snapshot() {
@@ -17,7 +18,9 @@ class Controller extends EventEmitter {
     } : this.current;
     return { current, busy: this.busy, error: this.error, output: this.output,
       revision: this.store.data.revision, projects: this.store.data.published,
-      control: { localActive: this.operation?.source === 'local' || Date.now() < this.localPriorityUntil, busySource: this.operation?.source || null, generation: this.controlGeneration },
+      control: { localActive: this.operation?.source === 'local' || Date.now() < this.localPriorityUntil,
+        managerActive: this.operation?.source === 'manager' || Date.now() < this.managerPriorityUntil,
+        busySource: this.operation?.source || null, generation: this.controlGeneration },
       serverTime: new Date().toISOString() };
   }
   notify() { this.emit('state', this.snapshot()); }
@@ -34,14 +37,21 @@ class Controller extends EventEmitter {
   }
   beginOperation(source) {
     if (this.output.paused || this.store.settings.outputPaused) throw new AppError('LiveScreen 已暂停大屏输出，请在电脑确认显示器后恢复', 409);
-    if (source === 'remote' && (this.operation?.source === 'local' || Date.now() < this.localPriorityUntil)) throw new AppError('电脑正在操作，手机控制暂时让位，请稍候再试', 409);
+    if (['remote','manager'].includes(source) && (this.operation?.source === 'local' || Date.now() < this.localPriorityUntil)) throw new AppError('电脑正在操作，远程控制暂时让位，请稍候再试', 409);
+    if (source === 'remote' && (this.operation?.source === 'manager' || Date.now() < this.managerPriorityUntil)) throw new AppError('管理员正在操作，手机控制暂时让位，请稍候再试', 409);
     if (this.operation) {
-      if (source !== 'local' || this.operation.source === 'local') throw new AppError('上一个操作仍在准备，请稍后再试', 409);
+      const priority = { automatic: -1, remote: 0, manager: 1, local: 2 };
+      if ((priority[source] ?? 0) <= (priority[this.operation.source] ?? 0)) throw new AppError('上一个操作仍在准备，请稍后再试', 409);
       this.operation.cancelled = true; this.player.cancel?.();
     }
     const operation = { source, cancelled: false }; this.operation = operation;
     if (source === 'local') { this.controlGeneration++; this.holdLocalPriority(); }
+    if (source === 'manager') { this.controlGeneration++; this.holdManagerPriority(); }
     this.busy = true; this.error = null; this.notify(); return operation;
+  }
+  holdManagerPriority() {
+    this.managerPriorityUntil = Date.now() + 2000; clearTimeout(this.managerTimer);
+    this.managerTimer = setTimeout(() => this.notify(), 2010); this.managerTimer.unref?.();
   }
   ensureOperation(operation) {
     if (operation.cancelled || this.operation !== operation) throw new AppError('手机指令已由电脑本地操作接管', 409);
@@ -50,6 +60,7 @@ class Controller extends EventEmitter {
     if (this.operation !== operation) return;
     this.operation = null; this.busy = false;
     if (operation.source === 'local') this.holdLocalPriority();
+    if (operation.source === 'manager') this.holdManagerPriority();
     this.notify();
   }
   async switchTo(projectId, sceneId, source = 'remote') {
@@ -121,6 +132,11 @@ class Controller extends EventEmitter {
       catch { /* Deleted/unusable content falls back to the guide. */ }
     }
     this.started = true;
+    if (['project-default','last-scene'].includes(this.store.settings.startupView)) {
+      try { const current = await this.playConfiguredScene('automatic', this.store.settings.startupView); if (current) return current; }
+      catch (error) { this.store.log('startup-scene-failed', { error:error.message }); }
+      // Keep a useful pairing screen when configured media has disappeared.
+    }
     await this.showGuide(true);
     return this.maybePlayAfterConnection();
   }
@@ -136,10 +152,10 @@ class Controller extends EventEmitter {
     try { await this.playConfiguredScene(); }
     catch (error) { if (error.status === 409) return; this.error = '手机已连接，但自动播放失败：' + error.message + '。请手动选择可用场景。'; this.notify(); }
   }
-  async playConfiguredScene(source = 'automatic') {
+  async playConfiguredScene(source = 'automatic', mode = this.store.settings.afterPairingView) {
     const projects = this.store.data.published;
     const saved = this.store.settings.lastPlayback;
-    if (this.store.settings.afterPairingView === 'last-scene' && saved) {
+    if (mode === 'last-scene' && saved) {
       try { sceneIn(projects, saved.projectId, saved.sceneId); return await this.switchTo(saved.projectId, saved.sceneId, source); }
       catch { /* Removed or missing last content falls back to the configured default. */ }
     }

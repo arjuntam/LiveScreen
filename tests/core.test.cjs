@@ -35,8 +35,8 @@ test('renderer acknowledgement is required; failure retains previous committed s
   fail = true; await assert.rejects(controller.switchTo('home', 'product'), /decode failed/);
   assert.equal(controller.current.sceneId, 'welcome'); assert.equal(controller.busy, false);
 });
-test('restart always shows the guide, then the first connected phone activates the configured background', async t => {
-  const store = setup(t); const played = []; const player = { play: async s => played.push(s.id), guide: async () => {} };
+test('guide startup waits for the first phone, then the first connected phone activates the configured background', async t => {
+  const store = setup(t); store.saveSettings({startupView:'pairing-guide'}); const played = []; const player = { play: async s => played.push(s.id), guide: async () => {} };
   const c = new Controller(store, player); await c.switchTo('home', 'loop');
   const restart = new Controller(store, player); restart.setOutput({ connected: true }); await restart.startup();
   assert.equal(restart.current.isGuide, true); assert.deepEqual(played, ['loop']);

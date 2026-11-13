@@ -38,7 +38,7 @@ window.LS = {
   },
   async quitApp() {
     if (window.livescreenDesktop) return window.livescreenDesktop.quit();
-    return LS.api('/api/admin/quit', { method: 'POST' });
+    return LS.api('/api/admin/quit', { method: 'POST', body:{confirm:true} });
   },
   connect(onState, onNetwork) {
     const source = new EventSource('/api/events');

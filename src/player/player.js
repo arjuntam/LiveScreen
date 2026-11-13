@@ -120,7 +120,11 @@ window.led.onPrepare(async command => {
     await frame();
     if (view.cancelled || pending !== view) return release(view);
     if (command.deadline && Date.now() >= command.deadline) throw new Error('素材准备超时');
-    for (const el of media) if (el.tagName === 'VIDEO') await el.play();
+    for (const el of media) if (el.tagName === 'VIDEO') {
+      // Preflight autoplay while muted, then hold the first frame during the
+      // fade. Starting at commit preserves the opening words of audible video.
+      await el.play(); el.pause(); el.currentTime = 0;
+    }
     if (view.cancelled || pending !== view) return release(view);
     // All assets are decoded while hidden. The old scene stays visible until this point.
     const old = active;
@@ -134,11 +138,18 @@ window.led.onPrepare(async command => {
       view.root.style.opacity = '1'; animation.cancel();
     }
     if (view.cancelled || pending !== view) return release(view);
+    for (const el of media) if (el.tagName === 'VIDEO') await el.play();
+    if (view.cancelled || pending !== view) return release(view);
     active = view; pending = null;
     view.media = media; view.index = 0; view.playbackId = command.scene?.playbackId;
     view.mode = command.scene?.slideshowMode || 'auto'; view.interval = command.scene?.interval;
     view.paused = false;
     startPageTimer(view);
+    // Preloading and crossfading never introduce a second audible video.
+    // Switch audio only when the new picture is committed; cancelled prepares
+    // leave the old scene and its audio untouched.
+    old?.root.querySelectorAll('video').forEach(v => { v.muted = true; });
+    media.forEach(el => { if (el.tagName === 'VIDEO') el.muted = command.scene?.audioEnabled !== true; });
     await frame(); release(old);
     // A late error must report degraded playback, rather than pretending the state is healthy.
     media.forEach(el => { el.onerror = () => {

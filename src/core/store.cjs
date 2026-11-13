@@ -16,8 +16,15 @@ function atomicJSON(file, value) {
 class Store {
   constructor(root, exampleRoot) {
     this.root = root;
-    this.mediaDir = path.join(root, 'media');
-    fs.mkdirSync(this.mediaDir, { recursive: true });
+    this.settingsFile = path.join(root, 'settings.json');
+    const savedSettings = fs.existsSync(this.settingsFile) ? JSON.parse(fs.readFileSync(this.settingsFile)) : {};
+    this.settings = { schema: 1, display: null, outputMode: 'dual', lastProjectId: null, autoStart: false, port: 8080,
+      transition: { enabled: true, durationMs: 300 }, afterPairingView: 'project-default', defaultProjectId: null,
+      silentAutoStart: true, outputPaused: false, startupView: 'pairing-guide', ...savedSettings };
+    this.mediaDir = this.settings.mediaDirectory || path.join(root, 'media');
+    this.mediaWriters = 0; this.mediaMigrating = false;
+    // Never recreate a missing custom volume or silently seed a second library.
+    if (!this.settings.mediaDirectory) fs.mkdirSync(this.mediaDir, { recursive: true });
     this.file = path.join(root, 'library.json');
     if (!fs.existsSync(this.file)) {
       const library = JSON.parse(fs.readFileSync(path.join(exampleRoot, 'library.json')));
@@ -29,12 +36,15 @@ class Store {
     // An invalid existing file must never silently overwrite an operator's library.
     this.data = JSON.parse(fs.readFileSync(this.file));
     if (this.data.schema !== 1) throw new Error('素材库版本不受支持，请从备份恢复 library.json');
-    this.settingsFile = path.join(root, 'settings.json');
-    const savedSettings = fs.existsSync(this.settingsFile)
-      ? JSON.parse(fs.readFileSync(this.settingsFile))
-      : { schema: 1, display: null, lastProjectId: null, autoStart: false, port: 8080 };
-    this.settings = { transition: { enabled: true, durationMs: 300 }, afterPairingView: 'project-default', defaultProjectId: null, silentAutoStart: true, outputPaused: false, ...savedSettings, startupView: 'pairing-guide' };
     this.saveSettings({});
+  }
+  beginMediaWrite() {
+    const { AppError } = require('./library.cjs');
+    if (this.mediaMigrating) throw new AppError('素材正在迁移，请完成后再上传或导入', 409);
+    try { if (!fs.statSync(this.mediaDir).isDirectory()) throw new Error(); fs.accessSync(this.mediaDir,fs.constants.R_OK | fs.constants.W_OK); } catch { throw new AppError('主机素材目录不可用或不可写，请检查磁盘连接、权限与目录设置', 503); }
+    this.mediaWriters++;
+    let released = false;
+    return () => { if (!released) { released = true; this.mediaWriters--; } };
   }
   save(data) { atomicJSON(this.file, data); this.data = structuredClone(data); }
   saveSettings(patch) {

@@ -55,9 +55,11 @@ function createPresentationImporter({ store, adapter }) {
   }
   const timer = setInterval(() => { for (const job of jobs.values()) if (Date.now() - job.created > 30 * 60_000) void cancel(job.id).catch(() => {}); }, 60_000); timer.unref();
   return {
+    active() { return !!active; },
     async capabilities() { return { ...(await adapter.capabilities()), maxBytes: IMPORT_MAX, maxPages: MAX_PAGES, maxSelected: MAX_SELECTED, activeJob: active ? snapshot(active) : null }; },
     async upload(req) {
       if (closed) throw new AppError('软件正在退出', 503);
+      if (store.mediaMigrating) throw new AppError('素材正在迁移，请稍后导入', 409);
       if (active) throw new AppError('已有文稿正在导入，请先完成或取消当前任务', 409);
       let name; try { name = decodeURIComponent(req.headers['x-filename'] || ''); } catch { throw new AppError('文件名编码错误'); }
       name = path.basename(name.replaceAll('\\', '/'));
@@ -82,6 +84,8 @@ function createPresentationImporter({ store, adapter }) {
     get(id) { return snapshot(find(id)); },
     page(id, index) { const job = find(id); if (job.state !== 'ready' || !Number.isInteger(index) || !job.pages[index]) throw new AppError('页面不存在',404); return path.join(job.dir, `${index}.png`); },
     commit(id, { pages, name }) {
+      if (store.mediaMigrating) throw new AppError('素材正在迁移，请稍后确认导入', 409);
+      const release = store.beginMediaWrite(); release();
       const job = find(id); if (job.result) return job.result;
       if (job.state !== 'ready') throw new AppError('文稿尚未转换完成',409);
       if (!Array.isArray(pages) || pages.length < 1 || pages.length > MAX_SELECTED || new Set(pages).size !== pages.length || pages.some(i => !Number.isInteger(i) || !job.pages[i])) throw new AppError('每个场景请选择 1–50 个不同页面');

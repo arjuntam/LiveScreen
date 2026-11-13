@@ -3,7 +3,7 @@ const { electronEnvironment } = require('./electron-env.cjs');
 const { test,expect,_electron:electron,chromium }=require('@playwright/test');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const root=path.resolve(__dirname,'../..');
-test('remote management has its own labels/logout, native-only controls are denied, and draft status stays understandable',async()=>{
+test('remote management has its own labels/logout, host controls are available with native folder chooser protected, and draft status stays understandable',async()=>{
   const dataRoot=fs.mkdtempSync(path.join(os.tmpdir(),'livescreen-remote-manager-'));let app,browser;
   try{
     app=await electron.launch({args:[root,'--smoke-test','--port=0',`--data-dir=${dataRoot}`],env:electronEnvironment()});
@@ -15,16 +15,16 @@ test('remote management has its own labels/logout, native-only controls are deni
     const secret=fs.readFileSync(path.join(dataRoot,'首次安装口令.txt'),'utf8').split('\n')[0].split('：')[1];
     async function manager(){const ctx=await browser.newContext({viewport:{width:1440,height:900}}),page=await ctx.newPage();await page.goto(base+'/admin');await page.getByLabel('远程管理口令',{exact:true}).fill(secret);await page.getByRole('button',{name:'进入管理',exact:true}).click();await expect(page.locator('#admin')).toBeVisible();return page;}
     const remote=await manager(),other=await manager();
-    await expect(remote.getByRole('button',{name:'退出软件',exact:true})).toHaveCount(0);
+    await expect(remote.locator('.topbar [data-quit]')).toBeHidden();
     await expect(remote.getByRole('button',{name:'退出管理登录',exact:true})).toBeVisible();
     await expect(remote.locator('#tabPlayback')).toHaveText('大屏控制');await expect(admin.locator('#tabPlayback')).toHaveText('本地播放');
-    await expect(remote.locator('#toggleOutput')).toBeHidden();await expect(admin.locator('#toggleOutput')).toBeVisible();
-    await remote.locator('#tabSystem').click();await expect(remote.locator('#bindDisplay')).toBeHidden();await expect(remote.locator('#autoStart')).toBeHidden();await expect(remote.locator('#dataRoot')).toBeHidden();
+    await expect(remote.locator('#toggleOutput')).toBeVisible();await expect(admin.locator('#toggleOutput')).toBeVisible();
+    await remote.locator('#tabSystem').click();await expect(remote.locator('#bindDisplay')).toBeVisible();await expect(remote.locator('#autoStart')).toBeVisible();await expect(remote.locator('#chooseMedia')).toBeHidden();await expect(remote.locator('#dataRoot')).toBeHidden();
     const status=await remote.evaluate(async()=>{
       const info=await(await fetch('/api/admin/system')).json();const results=[];
       for(const route of ['quit','display','autostart','output'])results.push((await fetch('/api/admin/'+route,{method:'POST',headers:{'X-LiveScreen':'1','Content-Type':'application/json'},body:'{}'})).status);
       return {results,path:info.dataRoot,local:info.localControls};
-    });expect(status.results).toEqual([403,403,403,403]);expect(status.path).toBeNull();expect(status.local).toBe(false);
+    });expect(status.results).toEqual([400,400,400,400]);expect(status.path).toBeNull();expect(status.local).toBe(false);
     await remote.locator('#tabLibrary').click();await expect(remote.locator('#draftState')).toHaveText('已发布');
     await remote.locator('#sceneName').fill('远程编辑背景');await expect(remote.locator('#draftState')).toHaveText('有未保存修改');
     await remote.locator('#saveScene').click();await expect(remote.locator('#draftState')).toHaveText('已保存，待发布');

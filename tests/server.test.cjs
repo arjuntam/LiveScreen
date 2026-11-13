@@ -168,7 +168,7 @@ test('startup guide can be configured and shown only by operators', async t => {
   assert.equal(f.c.current.isGuide, true); assert.equal(f.store.settings.lastProjectId, 'home');
 });
 test('a valid paired phone activates the guide, while admin reads do not; page API enforces identity', async t => {
-  const f = await setup(t); const admin = await f.login('admin'); f.c.setOutput({ connected: true }); await f.c.startup();
+  const f = await setup(t); f.store.saveSettings({startupView:'pairing-guide'}); const admin = await f.login('admin'); f.c.setOutput({ connected: true }); await f.c.startup();
   await f.request('/api/state', 'GET', null, admin); assert.equal(f.c.current.isGuide, true);
   const phone = await f.login('control'); await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.c.current.sceneId, 'welcome');
@@ -233,20 +233,21 @@ test('generic guide network hint is optional, validated, persistent and restrict
   assert.equal((await f.request('/api/admin/guide-reference/enterprise', 'GET', null, admin)).status, 404);
 });
 
-test('remote managers cannot operate native-only lifecycle/settings or read the host data path', async t => {
-  const calls = [];
-  const f = await setup(t, { autoStartSupported: true, displays: () => [{ id:'led' }], bindDisplay: async () => calls.push('display'), setAutoStart: async () => calls.push('autostart'), setOutputPaused: async () => calls.push('output'), quit: () => calls.push('quit') });
-  const remote = await f.login('admin');
-  for (const [route, body] of [['display',{id:'led'}],['autostart',{enabled:true}],['output',{paused:false}],['quit',{}]]) {
-    assert.equal((await f.request('/api/admin/'+route,'POST',body,remote)).status,403);
-  }
-  assert.deepEqual(calls,[]);
-  const remoteInfo = await (await f.request('/api/admin/system','GET',null,remote)).json();
-  assert.equal(remoteInfo.localControls,false); assert.equal(remoteInfo.dataRoot,null); assert.deepEqual(remoteInfo.displays,[]);
-  const native=f.native(); const localInfo=await (await f.request('/api/admin/system','GET',null,native)).json();
-  assert.equal(localInfo.localControls,true); assert.equal(localInfo.dataRoot,f.store.root);
-  for(const [route,body] of [['display',{id:'led'}],['autostart',{enabled:true}],['output',{paused:false}]]) assert.equal((await f.request('/api/admin/'+route,'POST',body,native)).status,200);
-  assert.deepEqual(calls,['display','autostart','output']);
+test('remote administrators manage host lifecycle explicitly, while phone permissions and native folder chooser remain restricted', async t => {
+ const calls=[];
+ const f=await setup(t,{autoStartSupported:true,displays:()=>[{id:'led'}],bindDisplay:async(id,mode)=>calls.push([id,mode]),setAutoStart:async()=>calls.push('autostart'),setOutputPaused:async()=>calls.push('output'),quit:()=>calls.push('quit')});
+ const remote=await f.login('admin'),phone=await f.login('control');
+ for(const [route,body] of [['display',{id:'led',mode:'single'}],['autostart',{enabled:true}],['output',{paused:false}]]){
+  assert.equal((await f.request('/api/admin/'+route,'POST',body,phone)).status,401);
+  assert.equal((await f.request('/api/admin/'+route,'POST',body,remote)).status,200);
+ }
+ assert.deepEqual(calls,[['led','single'],'autostart','output']);
+ const info=await(await f.request('/api/admin/system','GET',null,remote)).json();assert.equal(info.localControls,false);assert.equal(info.dataRoot,null);assert.deepEqual(info.displays,[{id:'led'}]);assert.equal(info.autoStartSupported,true);
+ assert.equal((await f.request('/api/admin/media/choose','POST',{},remote)).status,403);
+ assert.equal((await f.request('/api/admin/quit','POST',{},remote)).status,400);assert.ok(!calls.includes('quit'));
+ assert.equal((await f.request('/api/admin/quit','POST',{confirm:true},phone)).status,401);
+ assert.equal((await f.request('/api/admin/quit','POST',{confirm:true},remote)).status,202);
+ await new Promise(resolve=>setTimeout(resolve,150));assert.ok(calls.includes('quit'));
 });
 test('admin logout invalidates only the remote management session and keeps independent phone trust and playback', async t => {
   const f=await setup(t); const admin=await f.login('admin'),phone=await f.login('control'),native=f.native();
@@ -277,4 +278,26 @@ test('both browser entry points have public branded favicons and mobile home-scr
     const response=await fetch(f.base+url);assert.equal(response.status,200);assert.match(response.headers.get('content-type'),new RegExp(mime.replace('+','\\+')));assert.ok((await response.arrayBuffer()).byteLength>100);
   }
   assert.equal((await fetch(f.base+'/media/welcome')).status,401);
+});
+test('media directory operations are administrator-only and new remote uploads use the verified target after migration',async t=>{
+ const f=await setup(t),admin=await f.login('admin'),phone=await f.login('control');const target=fs.mkdtempSync(path.join(os.tmpdir(),'livescreen-target-'));t.after(()=>fs.rmSync(target,{recursive:true,force:true}));
+ for(const [route,method] of [['/api/admin/media','GET'],['/api/admin/media/check','POST'],['/api/admin/media/migrate','POST']])assert.equal((await f.request(route,method,method==='GET'?undefined:{directory:target},phone)).status,401);
+ const old=f.store.mediaDir;assert.equal((await f.request('/api/admin/media/check','POST',{directory:target},admin)).status,200);
+ assert.equal((await f.request('/api/admin/media/migrate','POST',{directory:target},admin)).status,202);
+ let info;for(let i=0;i<200;i++){info=await(await f.request('/api/admin/media','GET',undefined,admin)).json();if(!info.migrating)break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(info.job.state,'completed');assert.equal(info.available,true);
+ const png=fs.readFileSync(path.resolve(__dirname,'../examples/welcome.png'));
+ const upload=await fetch(f.base+'/api/admin/upload',{method:'POST',headers:{Cookie:admin,'X-LiveScreen':'1','X-Filename':'new.png'},body:png});assert.equal(upload.status,201);const asset=await upload.json();assert.equal(fs.existsSync(path.join(old,asset.file)),false);assert.deepEqual(fs.readFileSync(f.store.assetPath(asset.id)),png);
+ const read=await f.request('/media/'+asset.id,'GET',undefined,phone);assert.equal(read.status,200);assert.deepEqual(Buffer.from(await read.arrayBuffer()),png);
+ fs.renameSync(target,target+'-offline');t.after(()=>fs.rmSync(target+'-offline',{recursive:true,force:true}));info=await(await f.request('/api/admin/media','GET',undefined,admin)).json();assert.equal(info.available,false);
+ const failed=await fetch(f.base+'/api/admin/upload',{method:'POST',headers:{Cookie:admin,'X-LiveScreen':'1','X-Filename':'new.png'},body:png});assert.equal(failed.status,503);assert.match((await failed.json()).error,/素材目录不可用/);assert.equal(fs.existsSync(target),false);assert.equal(f.store.mediaDir,info.directory);
+});
+test('actual media ACL write failures after preflight are reported without registering a missing asset',async t=>{
+ const f=await setup(t),admin=await f.login('admin'),before=structuredClone(f.store.data),write=fs.createWriteStream;
+ const {Writable}=require('node:stream');t.mock.method(fs,'createWriteStream',function(file,...args){
+  if(String(file).startsWith(f.store.mediaDir+path.sep))return new Writable({write(_chunk,_encoding,callback){callback(Object.assign(new Error('ACL denied'),{code:'EACCES'}));}});
+  return write.call(this,file,...args);
+ });
+ const result=await fetch(f.base+'/api/admin/upload',{method:'POST',headers:{Cookie:admin,'X-LiveScreen':'1','X-Filename':'denied.png'},body:fs.readFileSync(path.resolve(__dirname,'../examples/welcome.png'))});
+ assert.equal(result.status,503);assert.match((await result.json()).error,/主机素材目录.*权限/);assert.deepEqual(f.store.data,before);assert.equal(fs.readdirSync(f.store.mediaDir).some(n=>n.endsWith('.part')),false);
 });

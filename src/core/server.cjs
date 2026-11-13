@@ -8,6 +8,7 @@ const { Transform } = require('node:stream');
 const { isDeepStrictEqual } = require('node:util');
 const { AppError, validateProjects } = require('./library.cjs');
 const { ipv4, privateIP, sameSubnet } = require('./network.cjs');
+const { createMediaLocation } = require('./media-location.cjs');
 const { buildConnections } = require('./connections.cjs');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.ico': 'image/vnd.microsoft.icon', '.svg': 'image/svg+xml' };
 const UPLOAD_MAX = 512 * 1024 * 1024;
@@ -42,6 +43,10 @@ async function upload(req, store) {
   if (!['.png', '.jpg', '.jpeg', '.webp', '.mp4'].includes(ext)) throw new AppError('仅支持 PNG、JPG、WebP 和 H.264 MP4');
   const size = Number(req.headers['content-length']);
   if (!Number.isInteger(size) || size <= 0 || size > UPLOAD_MAX) throw new AppError('单个文件需在 1 B–512 MB 之间', 413);
+  const release = store.beginMediaWrite();
+  try { return await uploadLocked(req, store, name, ext, size); } finally { release(); }
+}
+async function uploadLocked(req, store, name, ext, size) {
   const disk = fs.statfsSync(store.mediaDir);
   if (Number(disk.bavail) * Number(disk.bsize) < size + 1024 ** 3) throw new AppError('磁盘空间不足，需保留至少 1 GB', 507);
   const id = crypto.randomUUID(); const file = id + ext; const temp = path.join(store.mediaDir, file + '.part');
@@ -66,6 +71,8 @@ async function upload(req, store) {
   } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
 }
 function createControlServer({ store, controller, auth, webRoot, desktop = {}, allowedInterfaces = [], presentationImporter }) {
+  const media = createMediaLocation(store, { importBusy: () => !!presentationImporter?.active() });
+  const commandSource = req => { const s = auth.session(req); return s.native ? 'local' : s.role === 'admin' ? 'manager' : 'remote'; };
   const clients = new Set(); const servers = []; const sockets = new Set();
   let closed = false, closePromise, listenerPort, networkErrors = [], networkUpdatedAt = null;
   let networkWork = Promise.resolve();
@@ -133,7 +140,8 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
       }
       if (route.startsWith('/api/admin/')) {
         const admin = auth.session(req, 'admin');
-        if (['/api/admin/quit', '/api/admin/display', '/api/admin/autostart', '/api/admin/output'].includes(route) && !admin.native) throw new AppError('此操作仅限大屏电脑本机软件，远程管理无法执行', 403);
+        if (route === '/api/admin/media/choose' && !admin.native) throw new AppError('文件夹选择仅在主机软件中可用，请填写主机目录', 403);
+        if (store.mediaMigrating && (route === '/api/admin/upload' || route === '/api/admin/draft' || route === '/api/admin/publish' || route.startsWith('/api/admin/imports') && !['GET','DELETE'].includes(req.method))) throw new AppError('素材正在迁移，请完成后再上传、保存或导入', 409);
       }
       else if (route.startsWith('/api/') || route.startsWith('/media/')) auth.session(req);
       if (req.method === 'GET' && route === '/api/session') {
@@ -151,19 +159,19 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
         req.on('close', () => clients.delete(client)); return;
       }
       if (req.method === 'POST' && route === '/api/switch') {
-        const b = await jsonBody(req); const source = auth.session(req).native ? 'local' : 'remote';
-        if (source === 'remote' && b.controlGeneration !== controller.controlGeneration) throw new AppError('电脑已接管，请稍候再操作；旧页面请刷新。', 409);
+        const b = await jsonBody(req); const source = commandSource(req);
+        if (source !== 'local' && b.controlGeneration !== controller.controlGeneration) throw new AppError('电脑已接管，请稍候再操作；旧页面请刷新。', 409);
         const current = await controller.switchTo(b.projectId, b.sceneId, source); return json(res, 200, { current });
       }
       if (req.method === 'POST' && route === '/api/page') {
-        const b = await jsonBody(req); const source = auth.session(req).native ? 'local' : 'remote';
-        if (source === 'remote' && b.controlGeneration !== controller.controlGeneration) throw new AppError('电脑已接管，请稍候再操作；旧页面请刷新。', 409);
+        const b = await jsonBody(req); const source = commandSource(req);
+        if (source !== 'local' && b.controlGeneration !== controller.controlGeneration) throw new AppError('电脑已接管，请稍候再操作；旧页面请刷新。', 409);
         if (Object.hasOwn(b, 'index') && Object.hasOwn(b, 'direction')) throw new AppError('目标页码和翻页方向不能同时提交');
         return json(res, 200, { current: await controller.turnPage(b.playbackId, Object.hasOwn(b, 'index') ? b.index : b.direction, source) });
       }
       if (req.method === 'POST' && route === '/api/slideshow') {
-        const b = await jsonBody(req); const source = auth.session(req).native ? 'local' : 'remote';
-        if (source === 'remote' && b.controlGeneration !== controller.controlGeneration) throw new AppError('电脑已接管，请稍候再操作；旧页面请刷新。', 409);
+        const b = await jsonBody(req); const source = commandSource(req);
+        if (source !== 'local' && b.controlGeneration !== controller.controlGeneration) throw new AppError('电脑已接管，请稍候再操作；旧页面请刷新。', 409);
         return json(res, 200, { current: await controller.setSlideshowPaused(b.playbackId, b.paused, source) });
       }
       if (req.method === 'GET' && route === '/api/admin/library') return json(res, 200, { ...store.data, hasUnpublishedChanges: !isDeepStrictEqual(store.data.draft, store.data.published) });
@@ -182,16 +190,18 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
       if (req.method === 'POST' && route === '/api/admin/test-scene') {
         const b = await jsonBody(req);
         const [project] = validateProjects([{ id: b.projectId, name: b.projectName, defaultSceneId: b.scene?.id, scenes: [b.scene] }], store);
-        return json(res, 200, { current: await controller.testScene(project, project.scenes[0], auth.session(req).native ? 'local' : 'remote') });
+        return json(res, 200, { current: await controller.testScene(project, project.scenes[0], commandSource(req)) });
       }
-      if (req.method === 'POST' && route === '/api/admin/test/restore') return json(res, 200, { current: await controller.restore(auth.session(req).native ? 'local' : 'remote') });
-      if (req.method === 'POST' && route === '/api/admin/guide') return json(res, 200, { current: await controller.showGuide(false, auth.session(req).native ? 'local' : 'remote') });
+      if (req.method === 'POST' && route === '/api/admin/test/restore') return json(res, 200, { current: await controller.restore(commandSource(req)) });
+      if (req.method === 'POST' && route === '/api/admin/guide') return json(res, 200, { current: await controller.showGuide(false, commandSource(req)) });
       if (req.method === 'POST' && route === '/api/admin/startup') {
         const b = await jsonBody(req);
         if (!['project-default', 'last-scene'].includes(b.afterPairingView)) throw new AppError('手机连接后播放选项无效');
         if (b.defaultProjectId !== null && !store.data.published.some(p => p.id === b.defaultProjectId)) throw new AppError('请选择已发布的默认背景项目');
-        store.saveSettings({ startupView: 'pairing-guide', afterPairingView: b.afterPairingView, defaultProjectId: b.defaultProjectId });
-        return json(res, 200, { afterPairingView: b.afterPairingView, defaultProjectId: b.defaultProjectId });
+        const startupView = b.startupView ?? 'pairing-guide';
+        if (!['pairing-guide','project-default','last-scene'].includes(startupView)) throw new AppError('开机播放选项无效');
+        store.saveSettings({ startupView, afterPairingView: b.afterPairingView, defaultProjectId: b.defaultProjectId });
+        return json(res, 200, { startupView, afterPairingView: b.afterPairingView, defaultProjectId: b.defaultProjectId });
       }
       if (req.method === 'GET' && route === '/api/admin/pairing') return json(res, 200, auth.pairingInfo());
       if (req.method === 'POST' && route === '/api/admin/pairing/refresh') { const result = auth.refreshPairing(); pairingChanged(); return json(res, 200, result); }
@@ -234,12 +244,14 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
       if (req.method === 'GET' && route === '/api/admin/system') {
         const native = !!auth.session(req, 'admin').native;
         return json(res, 200, { settings: { ...store.settings, port: servers[0]?.address()?.port || store.settings.port }, ...(await networkInfo()),
-          displays: native ? desktop.displays?.() || [] : [], platform: process.platform, localControls: native,
-          dataRoot: native ? store.root : null, preview: native && !!desktop.preview, autoStartSupported: native && (desktop.autoStartSupported || false),
-          autoStartStatus: native ? desktop.loginStatus?.() || null : null, outputSize: desktop.outputSize?.() || null });
+          displays: desktop.displays?.() || [], platform: process.platform, localControls: native,
+          dataRoot: native ? store.root : null, preview: native && !!desktop.preview, autoStartSupported: desktop.autoStartSupported || false,
+          media:media.status(), emergency:desktop.emergencyStatus?.() || null, autoStartStatus: desktop.loginStatus?.() || null, outputSize: desktop.outputSize?.() || null });
       }
       if (req.method === 'POST' && route === '/api/admin/display') {
-        const b = await jsonBody(req); await desktop.bindDisplay?.(b.id); return json(res, 200, { ok: true });
+        const b = await jsonBody(req); if (!desktop.bindDisplay) throw new AppError('此环境无法绑定显示器', 503);
+        if (b.mode !== undefined && !['dual','single'].includes(b.mode)) throw new AppError('输出模式无效');
+        await desktop.bindDisplay(b.id, b.mode); return json(res, 200, { ok: true });
       }
       if (req.method === 'POST' && route === '/api/admin/autostart') {
         const b = await jsonBody(req);
@@ -259,13 +271,26 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
       }
       if (req.method === 'POST' && route === '/api/admin/quit') {
         if (!desktop.quit) throw new AppError('请通过桌面程序退出');
-        json(res, 200, { ok: true }); setTimeout(() => desktop.quit(), 100); return;
+        const b = await jsonBody(req);
+        if (!auth.session(req,'admin').native && b.confirm !== true) throw new AppError('请确认退出后大屏和网页服务都会停止', 400);
+        json(res, 202, { ok: true, accepted: true }); setTimeout(() => desktop.quit(), 100); return;
       }
+      if (req.method === 'GET' && route === '/api/admin/media') return json(res,200,media.status());
+      if (req.method === 'POST' && route === '/api/admin/media/choose') return json(res,200,{ directory:await desktop.chooseMediaDirectory?.() || null });
+      if (req.method === 'POST' && route === '/api/admin/media/check') return json(res,200,await media.check((await jsonBody(req)).directory));
+      if (req.method === 'POST' && route === '/api/admin/media/migrate') return json(res,202,await media.start((await jsonBody(req)).directory));
       if (['GET', 'HEAD'].includes(req.method) && /^\/media\/[a-zA-Z0-9_-]+$/.test(route)) return serveFile(req, res, store.assetPath(route.slice(7)));
       const staticFiles = { '/favicon.ico': '../assets/livescreen.ico', '/icon.svg': '../assets/livescreen.svg', '/apple-touch-icon.png': '../assets/livescreen.png', '/': 'index.html', '/admin': 'admin.html', '/app.js': 'app.js', '/admin.js': 'admin.js', '/presentation.js': 'presentation.js', '/common.js': 'common.js', '/style.css': 'style.css', '/tokens.css': 'tokens.css' };
       if (['GET', 'HEAD'].includes(req.method) && staticFiles[route]) return serveFile(req, res, path.join(webRoot, staticFiles[route]));
       throw new AppError('页面或接口不存在', 404);
     } catch (e) {
+      // Windows access() does not check directory ACLs. Report actual write
+      // failures clearly as well, including a volume lost after preflight.
+      const mediaWrite = req.method === 'POST' && (req.url === '/api/admin/upload' || /^\/api\/admin\/imports\/[a-f0-9-]+\/commit$/.test(req.url));
+      if (mediaWrite && !e.status && ['EACCES','EPERM','EROFS','ENOENT','ENOTDIR','ENOSPC'].includes(e.code)) {
+        store.log('media-write-failed', { code:e.code });
+        e = new AppError('素材写入失败，请检查主机素材目录与数据目录的磁盘连接、权限和剩余空间', e.code === 'ENOSPC' ? 507 : 503);
+      }
       if (!res.headersSent && !res.destroyed) json(res, e.status || 500, { error: e.status ? e.message : '服务处理失败，请查看本机日志' });
       else if (!res.destroyed) res.end();
       if (!e.status) store.log('http-error', { error: e.message });
@@ -342,7 +367,7 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
       if (closed) return closePromise; closed = true;
       clearInterval(heartbeat); controller.off('state', broadcast);
       for (const c of clients) c.res.end(); clients.clear();
-      closePromise = networkWork.catch(() => {}).then(() => Promise.all([...servers.map(closeListener), presentationImporter?.close()]));
+      closePromise = networkWork.catch(() => {}).then(() => Promise.all([...servers.map(closeListener), media.close(), presentationImporter?.close()]));
       return closePromise;
     }
   };
