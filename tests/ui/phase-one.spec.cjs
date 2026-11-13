@@ -7,6 +7,7 @@ async function launch(data){const app=await electron.launch({args:[root,'--smoke
 async function api(page,route,body,method='POST'){return page.evaluate(async({route,body,method})=>{const res=await fetch(route,{method,headers:{'X-LiveScreen':'1','Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:res.status,data:await res.json()};},{route,body,method});}
 async function close(app){if(app){const done=app.waitForEvent('close');await app.evaluate(({app})=>app.quit());await done;}}
 test('scene sound is opt-in, editor stays silent, commit switches audio and failure retains the old audible scene',async()=>{
+ test.setTimeout(120000); // Windows CI takes about two seconds per native click; retain every audio/rollback assertion.
  const data=fs.mkdtempSync(path.join(os.tmpdir(),'livescreen-sound-'));let app;
  try{
   const result=await launch(data);app=result.app;const admin=result.admin;
