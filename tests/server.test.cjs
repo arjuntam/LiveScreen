@@ -292,3 +292,12 @@ test('media directory operations are administrator-only and new remote uploads u
  fs.renameSync(target,target+'-offline');t.after(()=>fs.rmSync(target+'-offline',{recursive:true,force:true}));info=await(await f.request('/api/admin/media','GET',undefined,admin)).json();assert.equal(info.available,false);
  const failed=await fetch(f.base+'/api/admin/upload',{method:'POST',headers:{Cookie:admin,'X-LiveScreen':'1','X-Filename':'new.png'},body:png});assert.equal(failed.status,503);assert.match((await failed.json()).error,/素材目录不可用/);assert.equal(fs.existsSync(target),false);assert.equal(f.store.mediaDir,info.directory);
 });
+test('actual media ACL write failures after preflight are reported without registering a missing asset',async t=>{
+ const f=await setup(t),admin=await f.login('admin'),before=structuredClone(f.store.data),write=fs.createWriteStream;
+ const {Writable}=require('node:stream');t.mock.method(fs,'createWriteStream',function(file,...args){
+  if(String(file).startsWith(f.store.mediaDir+path.sep))return new Writable({write(_chunk,_encoding,callback){callback(Object.assign(new Error('ACL denied'),{code:'EACCES'}));}});
+  return write.call(this,file,...args);
+ });
+ const result=await fetch(f.base+'/api/admin/upload',{method:'POST',headers:{Cookie:admin,'X-LiveScreen':'1','X-Filename':'denied.png'},body:fs.readFileSync(path.resolve(__dirname,'../examples/welcome.png'))});
+ assert.equal(result.status,503);assert.match((await result.json()).error,/主机素材目录.*权限/);assert.deepEqual(f.store.data,before);assert.equal(fs.readdirSync(f.store.mediaDir).some(n=>n.endsWith('.part')),false);
+});

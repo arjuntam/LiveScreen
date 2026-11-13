@@ -284,6 +284,13 @@ function createControlServer({ store, controller, auth, webRoot, desktop = {}, a
       if (['GET', 'HEAD'].includes(req.method) && staticFiles[route]) return serveFile(req, res, path.join(webRoot, staticFiles[route]));
       throw new AppError('页面或接口不存在', 404);
     } catch (e) {
+      // Windows access() does not check directory ACLs. Report actual write
+      // failures clearly as well, including a volume lost after preflight.
+      const mediaWrite = req.method === 'POST' && (req.url === '/api/admin/upload' || /^\/api\/admin\/imports\/[a-f0-9-]+\/commit$/.test(req.url));
+      if (mediaWrite && !e.status && ['EACCES','EPERM','EROFS','ENOENT','ENOTDIR','ENOSPC'].includes(e.code)) {
+        store.log('media-write-failed', { code:e.code });
+        e = new AppError('素材写入失败，请检查主机素材目录与数据目录的磁盘连接、权限和剩余空间', e.code === 'ENOSPC' ? 507 : 503);
+      }
       if (!res.headersSent && !res.destroyed) json(res, e.status || 500, { error: e.status ? e.message : '服务处理失败，请查看本机日志' });
       else if (!res.destroyed) res.end();
       if (!e.status) store.log('http-error', { error: e.message });
